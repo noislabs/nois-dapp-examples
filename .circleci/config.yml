@@ -7,10 +7,6 @@ workflows:
       - contract_double_dice_roll
       - lint
       - wasm-build
-      - integration:
-          requires:
-            - wasm-build
-            - contract_double_dice_roll
   deploy:
     jobs:
       - build_and_upload_contracts:

@@ -44,6 +44,9 @@ pub fn execute(
     match msg {
         //RollDice should be called by a player who wants to roll the dice
         ExecuteMsg::RollDice { job_id } => execute_roll_dice(deps, env, info, job_id),
+        ExecuteMsg::RollDiceMultipleTimes { job_id, n_times } => {
+            execute_roll_dice_multiple_times(deps, env, info, job_id, n_times)
+        }
         //Receive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::Receive { callback } => execute_receive(deps, env, info, callback),
     }
@@ -77,6 +80,40 @@ pub fn execute_roll_dice(
         funds: vec![],
     });
     Ok(response)
+}
+
+pub fn execute_roll_dice_multiple_times(
+    deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    job_id: String,
+    n_times: u64,
+) -> Result<Response, ContractError> {
+    //Prevent a player from paying for an already existing randomness.
+    //The actual immutability of the history comes in the execute_receive function
+    if DOUBLE_DICE_OUTCOME
+        .may_load(deps.storage, &job_id)?
+        .is_some()
+    {
+        return Err(ContractError::JobIdAlreadyPresent);
+    }
+    let nois_proxy = NOIS_PROXY.load(deps.storage)?;
+
+    let mut msgs = Vec::<WasmMsg>::new();
+
+    for job in 1..n_times {
+        let msg = WasmMsg::Execute {
+            contract_addr: nois_proxy.to_owned().into(),
+            msg: to_binary(&ProxyExecuteMsg::GetNextRandomness {
+                job_id: job_id.to_owned() + "-" + &job.to_string(),
+            })?,
+            funds: vec![],
+        };
+
+        msgs.push(msg);
+    }
+
+    Ok(Response::new().add_messages(msgs))
 }
 
 //The execute_receive function is triggered upon reception of the randomness from the proxy contract

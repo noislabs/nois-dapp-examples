@@ -97,23 +97,23 @@ pub fn execute_roll_dice_multiple_times(
     {
         return Err(ContractError::JobIdAlreadyPresent);
     }
-    let response = Response::new();
-    for job in 1..n_times {
-        let nois_proxy = NOIS_PROXY.load(deps.storage)?;
+    let nois_proxy = NOIS_PROXY.load(deps.storage)?;
 
-        response.to_owned().add_message(WasmMsg::Execute {
-            contract_addr: nois_proxy.into(),
-            //GetNextRandomness requests the randomness from the proxy
-            //The job id is needed to know what randomness we are referring to upon reception in the callback
-            //In this example, the job_id represents one round of dice rolling.
+    let mut msgs = Vec::<WasmMsg>::new();
+
+    for job in 1..n_times {
+        let msg = WasmMsg::Execute {
+            contract_addr: nois_proxy.to_owned().into(),
             msg: to_binary(&ProxyExecuteMsg::GetNextRandomness {
                 job_id: job_id.to_owned() + "-" + &job.to_string(),
             })?,
-            //For now the randomness is for free. You don't need to send any funds to request randomness
             funds: vec![],
-        });
+        };
+
+        msgs.push(msg);
     }
-    Ok(response)
+
+    Ok(Response::new().add_messages(msgs))
 }
 
 //The execute_receive function is triggered upon reception of the randomness from the proxy contract

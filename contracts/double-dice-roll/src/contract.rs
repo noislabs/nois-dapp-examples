@@ -101,11 +101,11 @@ pub fn execute_roll_dice_multiple_times(
 
     let mut msgs = Vec::<WasmMsg>::new();
 
-    for job in 1..n_times {
+    for job in 0..n_times {
         let msg = WasmMsg::Execute {
             contract_addr: nois_proxy.to_owned().into(),
             msg: to_binary(&ProxyExecuteMsg::GetNextRandomness {
-                job_id: job_id.to_owned() + "-" + &job.to_string(),
+                job_id: job_id.to_owned() + "-" + &(job + 10).to_string(),
             })?,
             funds: vec![],
         };

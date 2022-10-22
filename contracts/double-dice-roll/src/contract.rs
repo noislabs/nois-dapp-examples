@@ -8,7 +8,7 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{DOUBLE_DICE_OUTCOME, NOIS_PROXY};
-use nois::{ints_in_range, NoisCallback, ProxyExecuteMsg};
+use nois::{ints_in_range, NoisCallback, ProxyExecuteMsg, MAX_JOB_ID_LEN};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:double-dice-roll";
@@ -69,6 +69,9 @@ pub fn execute_roll_dice(
     {
         return Err(ContractError::JobIdAlreadyPresent);
     }
+    if job_id.len() > MAX_JOB_ID_LEN {
+        return Err(ContractError::JobIdTooLong);
+    }
 
     let response = Response::new().add_message(WasmMsg::Execute {
         contract_addr: nois_proxy.into(),
@@ -100,6 +103,9 @@ pub fn execute_roll_dice_multiple_times(
     let nois_proxy = NOIS_PROXY.load(deps.storage)?;
 
     let mut msgs = Vec::<WasmMsg>::new();
+    if job_id.len() + 2 + n_times.to_string().len() > MAX_JOB_ID_LEN {
+        return Err(ContractError::JobIdTooLong);
+    }
 
     for job in 0..n_times {
         let msg = WasmMsg::Execute {
@@ -219,6 +225,19 @@ mod tests {
         let info = mock_info("guest", &[]);
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
     }
+
+    #[test]
+    fn job_id_too_long() {
+        let mut deps = instantiate_proxy();
+
+        let msg = ExecuteMsg::RollDice {
+            job_id: "abcabcabcabcabca_asfsdfsdgsdgbcbcabcabcabc234t34t3t34gabcabcabc49".to_owned(),
+        };
+        let info = mock_info("guest", &[]);
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert!(matches!(err, ContractError::JobIdTooLong));
+    }
+
     #[test]
     fn proxy_cannot_bring_an_existing_job_id() {
         let mut deps = instantiate_proxy();

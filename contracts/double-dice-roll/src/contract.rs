@@ -108,6 +108,8 @@ pub fn execute_roll_dice_multiple_times(
     }
 
     for job in 0..n_times {
+        let job_id = format!("{job_id}-{}", job + 1);
+        // check job ID length
         let msg = WasmMsg::Execute {
             contract_addr: nois_proxy.to_owned().into(),
             msg: to_binary(&ProxyExecuteMsg::GetNextRandomness {

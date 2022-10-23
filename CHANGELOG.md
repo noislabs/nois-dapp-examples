@@ -2,9 +2,14 @@
 
 ## 0.4.3
 
-### Minor Changes
+## Added
 
-- Add job id size check
+- job id size check
+- payment
+
+## removed
+
+- multiple-dice-roll
 
 ## 0.1.0 - 0.4.2
 

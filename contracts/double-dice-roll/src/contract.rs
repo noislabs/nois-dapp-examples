@@ -74,7 +74,8 @@ pub fn execute_roll_dice(
         //The job id is needed to know what randomness we are referring to upon reception in the callback
         //In this example, the job_id represents one round of dice rolling.
         msg: to_binary(&ProxyExecuteMsg::GetNextRandomness { job_id })?,
-        //For now the randomness is for free. You don't need to send any funds to request randomness
+        // We pay here the contract with the native chain coin. 
+        // We need to check first with the nois proxy the denoms and amounts that are required
         funds: info.funds, // Just pass on all funds we got
     });
     Ok(response)

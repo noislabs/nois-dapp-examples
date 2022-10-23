@@ -12,6 +12,9 @@ pub enum ContractError {
     #[error("Proxy address is not valid")]
     InvalidProxyAddress,
 
+    #[error("Job ID exceeds length limit.")]
+    JobIdTooLong,
+
     #[error("Round already present")]
     JobIdAlreadyPresent,
 

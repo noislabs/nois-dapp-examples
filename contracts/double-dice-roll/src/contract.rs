@@ -8,7 +8,7 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{DOUBLE_DICE_OUTCOME, NOIS_PROXY};
-use nois::{ints_in_range, NoisCallback, ProxyExecuteMsg};
+use nois::{ints_in_range, NoisCallback, ProxyExecuteMsg, MAX_JOB_ID_LEN};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:double-dice-roll";
@@ -69,6 +69,7 @@ pub fn execute_roll_dice(
     {
         return Err(ContractError::JobIdAlreadyPresent);
     }
+    validate_job_id(&job_id)?;
 
     let response = Response::new().add_message(WasmMsg::Execute {
         contract_addr: nois_proxy.into(),
@@ -102,11 +103,11 @@ pub fn execute_roll_dice_multiple_times(
     let mut msgs = Vec::<WasmMsg>::new();
 
     for job in 0..n_times {
+        let job_id = format!("{job_id}-{}", job + 1);
+        validate_job_id(&job_id)?;
         let msg = WasmMsg::Execute {
             contract_addr: nois_proxy.to_owned().into(),
-            msg: to_binary(&ProxyExecuteMsg::GetNextRandomness {
-                job_id: job_id.to_owned() + "-" + &(job + 1).to_string(),
-            })?,
+            msg: to_binary(&ProxyExecuteMsg::GetNextRandomness { job_id })?,
             funds: vec![],
         };
 
@@ -114,6 +115,14 @@ pub fn execute_roll_dice_multiple_times(
     }
 
     Ok(Response::new().add_messages(msgs))
+}
+
+pub fn validate_job_id(job_id: &str) -> Result<(), ContractError> {
+    if job_id.len() > MAX_JOB_ID_LEN {
+        Err(ContractError::JobIdTooLong)
+    } else {
+        Ok(())
+    }
 }
 
 //The execute_receive function is triggered upon reception of the randomness from the proxy contract
@@ -219,6 +228,19 @@ mod tests {
         let info = mock_info("guest", &[]);
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
     }
+
+    #[test]
+    fn job_id_too_long() {
+        let mut deps = instantiate_proxy();
+
+        let msg = ExecuteMsg::RollDice {
+            job_id: "abcabcabcabcabca_asfsdfsdgsdgbcbcabcabcabc234t34t3t34gabcabcabc49".to_owned(),
+        };
+        let info = mock_info("guest", &[]);
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert!(matches!(err, ContractError::JobIdTooLong));
+    }
+
     #[test]
     fn proxy_cannot_bring_an_existing_job_id() {
         let mut deps = instantiate_proxy();

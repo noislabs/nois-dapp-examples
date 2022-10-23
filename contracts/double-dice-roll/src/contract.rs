@@ -69,9 +69,7 @@ pub fn execute_roll_dice(
     {
         return Err(ContractError::JobIdAlreadyPresent);
     }
-    if job_id.len() > MAX_JOB_ID_LEN {
-        return Err(ContractError::JobIdTooLong);
-    }
+    validate_job_id(&job_id)?;
 
     let response = Response::new().add_message(WasmMsg::Execute {
         contract_addr: nois_proxy.into(),
@@ -103,18 +101,13 @@ pub fn execute_roll_dice_multiple_times(
     let nois_proxy = NOIS_PROXY.load(deps.storage)?;
 
     let mut msgs = Vec::<WasmMsg>::new();
-    if job_id.len() + 2 + n_times.to_string().len() > MAX_JOB_ID_LEN {
-        return Err(ContractError::JobIdTooLong);
-    }
 
     for job in 0..n_times {
         let job_id = format!("{job_id}-{}", job + 1);
-        // check job ID length
+        validate_job_id(&job_id)?;
         let msg = WasmMsg::Execute {
             contract_addr: nois_proxy.to_owned().into(),
-            msg: to_binary(&ProxyExecuteMsg::GetNextRandomness {
-                job_id: job_id.to_owned() + "-" + &(job + 1).to_string(),
-            })?,
+            msg: to_binary(&ProxyExecuteMsg::GetNextRandomness { job_id })?,
             funds: vec![],
         };
 
@@ -122,6 +115,14 @@ pub fn execute_roll_dice_multiple_times(
     }
 
     Ok(Response::new().add_messages(msgs))
+}
+
+pub fn validate_job_id(job_id: &str) -> Result<(), ContractError> {
+    if job_id.len() > MAX_JOB_ID_LEN {
+        Err(ContractError::JobIdTooLong)
+    } else {
+        Ok(())
+    }
 }
 
 //The execute_receive function is triggered upon reception of the randomness from the proxy contract

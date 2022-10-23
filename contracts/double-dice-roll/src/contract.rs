@@ -44,9 +44,6 @@ pub fn execute(
     match msg {
         //RollDice should be called by a player who wants to roll the dice
         ExecuteMsg::RollDice { job_id } => execute_roll_dice(deps, env, info, job_id),
-        ExecuteMsg::RollDiceMultipleTimes { job_id, n_times } => {
-            execute_roll_dice_multiple_times(deps, env, info, job_id, n_times)
-        }
         //Receive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::Receive { callback } => execute_receive(deps, env, info, callback),
     }
@@ -57,7 +54,7 @@ pub fn execute(
 pub fn execute_roll_dice(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     job_id: String,
 ) -> Result<Response, ContractError> {
     let nois_proxy = NOIS_PROXY.load(deps.storage)?;
@@ -77,44 +74,11 @@ pub fn execute_roll_dice(
         //The job id is needed to know what randomness we are referring to upon reception in the callback
         //In this example, the job_id represents one round of dice rolling.
         msg: to_binary(&ProxyExecuteMsg::GetNextRandomness { job_id })?,
-        //For now the randomness is for free. You don't need to send any funds to request randomness
-        funds: vec![],
+        // We pay here the contract with the native chain coin.
+        // We need to check first with the nois proxy the denoms and amounts that are required
+        funds: info.funds, // Just pass on all funds we got
     });
     Ok(response)
-}
-
-pub fn execute_roll_dice_multiple_times(
-    deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    job_id: String,
-    n_times: u64,
-) -> Result<Response, ContractError> {
-    //Prevent a player from paying for an already existing randomness.
-    //The actual immutability of the history comes in the execute_receive function
-    if DOUBLE_DICE_OUTCOME
-        .may_load(deps.storage, &job_id)?
-        .is_some()
-    {
-        return Err(ContractError::JobIdAlreadyPresent);
-    }
-    let nois_proxy = NOIS_PROXY.load(deps.storage)?;
-
-    let mut msgs = Vec::<WasmMsg>::new();
-
-    for job in 0..n_times {
-        let job_id = format!("{job_id}-{}", job + 1);
-        validate_job_id(&job_id)?;
-        let msg = WasmMsg::Execute {
-            contract_addr: nois_proxy.to_owned().into(),
-            msg: to_binary(&ProxyExecuteMsg::GetNextRandomness { job_id })?,
-            funds: vec![],
-        };
-
-        msgs.push(msg);
-    }
-
-    Ok(Response::new().add_messages(msgs))
 }
 
 pub fn validate_job_id(job_id: &str) -> Result<(), ContractError> {

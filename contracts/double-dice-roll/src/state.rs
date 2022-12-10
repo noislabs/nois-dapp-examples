@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Timestamp};
+use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
 
 pub const NOIS_PROXY: Item<Addr> = Item::new("nois_proxy");
@@ -12,7 +12,7 @@ pub const RANDOMNESS_LIFECYCLE_BLOCKS: Map<&str, RandomnessLifecycleBlocks> =
 #[cw_serde]
 pub struct RandomnessLifecycleBlocks {
     pub request_block_height: u64,
-    pub request_block_time: Timestamp,
+    pub request_tx_index: u32,
     pub received_block_height: Option<u64>,
-    pub received_block_time: Option<Timestamp>,
+    pub received_tx_index: Option<u32>,
 }

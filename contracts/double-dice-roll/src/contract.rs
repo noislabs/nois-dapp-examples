@@ -71,9 +71,9 @@ pub fn execute_roll_dice(
     validate_job_id(&job_id)?;
     let randomness_lifecycle = RandomnessLifecycleBlocks {
         request_block_height: env.block.height,
-        request_block_time: env.block.time,
+        request_tx_index: env.transaction.unwrap().index,
         received_block_height: None,
-        received_block_time: None,
+        received_tx_index: None,
     };
     RANDOMNESS_LIFECYCLE_BLOCKS.save(deps.storage, &job_id, &randomness_lifecycle)?;
 
@@ -131,11 +131,12 @@ pub fn execute_receive(
     let requested_randomness = RANDOMNESS_LIFECYCLE_BLOCKS
         .load(deps.storage, &callback.job_id)
         .unwrap();
+
     let randomness_lifecycle = RandomnessLifecycleBlocks {
         request_block_height: requested_randomness.request_block_height,
-        request_block_time: requested_randomness.request_block_time,
+        request_tx_index: requested_randomness.received_tx_index.unwrap(),
         received_block_height: Some(env.block.height),
-        received_block_time: Some(env.block.time),
+        received_tx_index: Some(env.transaction.unwrap().index),
     };
     RANDOMNESS_LIFECYCLE_BLOCKS.save(deps.storage, &callback.job_id, &randomness_lifecycle)?;
 

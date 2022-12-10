@@ -24,4 +24,5 @@ pub enum QueryMsg {
     // GetCount returns the current count as a json-encoded number
     QueryOutcome { job_id: String },
     GetHistoryOfRounds {},
+    GetRandomnessLifecycleBlocks { job_id: String },
 }

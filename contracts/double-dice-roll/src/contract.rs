@@ -7,7 +7,9 @@ use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{DOUBLE_DICE_OUTCOME, NOIS_PROXY};
+use crate::state::{
+    RandomnessLifecycleBlocks, DOUBLE_DICE_OUTCOME, NOIS_PROXY, RANDOMNESS_LIFECYCLE_BLOCKS,
+};
 use nois::{ints_in_range, NoisCallback, ProxyExecuteMsg, MAX_JOB_ID_LEN};
 
 // version info for migration info
@@ -53,7 +55,7 @@ pub fn execute(
 //The request from randomness happens by calling the nois-proxy contract
 pub fn execute_roll_dice(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     job_id: String,
 ) -> Result<Response, ContractError> {
@@ -67,6 +69,13 @@ pub fn execute_roll_dice(
         return Err(ContractError::JobIdAlreadyPresent);
     }
     validate_job_id(&job_id)?;
+    let randomness_lifecycle = RandomnessLifecycleBlocks {
+        request_block_height: env.block.height,
+        request_block_time: env.block.time,
+        received_block_height: None,
+        received_block_time: None,
+    };
+    RANDOMNESS_LIFECYCLE_BLOCKS.save(deps.storage, &job_id, &randomness_lifecycle)?;
 
     let response = Response::new().add_message(WasmMsg::Execute {
         contract_addr: nois_proxy.into(),
@@ -93,7 +102,7 @@ pub fn validate_job_id(job_id: &str) -> Result<(), ContractError> {
 //The callback contains the randomness from drand (HexBinary) and the job_id
 pub fn execute_receive(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     callback: NoisCallback,
 ) -> Result<Response, ContractError> {
@@ -119,6 +128,16 @@ pub fn execute_receive(
         Some(_randomness) => return Err(ContractError::JobIdAlreadyPresent),
     };
     DOUBLE_DICE_OUTCOME.save(deps.storage, &callback.job_id, &double_dice_outcome)?;
+    let requested_randomness = RANDOMNESS_LIFECYCLE_BLOCKS
+        .load(deps.storage, &callback.job_id)
+        .unwrap();
+    let randomness_lifecycle = RandomnessLifecycleBlocks {
+        request_block_height: requested_randomness.request_block_height,
+        request_block_time: requested_randomness.request_block_time,
+        received_block_height: Some(env.block.height),
+        received_block_time: Some(env.block.time),
+    };
+    RANDOMNESS_LIFECYCLE_BLOCKS.save(deps.storage, &callback.job_id, &randomness_lifecycle)?;
 
     Ok(response)
 }
@@ -128,6 +147,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetHistoryOfRounds {} => to_binary(&query_history(deps)?),
         QueryMsg::QueryOutcome { job_id } => to_binary(&query_outcome(deps, job_id)?),
+        QueryMsg::GetRandomnessLifecycleBlocks { job_id } => {
+            to_binary(&query_randomness_lifecycle_blocks(deps, job_id)?)
+        }
     }
 }
 
@@ -135,6 +157,15 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 fn query_outcome(deps: Deps, job_id: String) -> StdResult<Option<u8>> {
     let outcome = DOUBLE_DICE_OUTCOME.may_load(deps.storage, &job_id)?;
     Ok(outcome)
+}
+
+//Query the randomness lifecycle blocks
+fn query_randomness_lifecycle_blocks(
+    deps: Deps,
+    job_id: String,
+) -> StdResult<Option<RandomnessLifecycleBlocks>> {
+    let result = RANDOMNESS_LIFECYCLE_BLOCKS.may_load(deps.storage, &job_id)?;
+    Ok(result)
 }
 
 //This function shows all the history of the dice outcomes from all rounds/job_ids
@@ -209,6 +240,12 @@ mod tests {
     fn proxy_cannot_bring_an_existing_job_id() {
         let mut deps = instantiate_proxy();
 
+        let msg = ExecuteMsg::RollDice {
+            job_id: "round_1".to_owned(),
+        };
+        let info = mock_info("guest", &[]);
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
         let msg = ExecuteMsg::Receive {
             callback: NoisCallback {
                 job_id: "round_1".to_string(),
@@ -257,6 +294,11 @@ mod tests {
     #[test]
     fn players_cannot_request_an_existing_job_id() {
         let mut deps = instantiate_proxy();
+        let msg = ExecuteMsg::RollDice {
+            job_id: "111".to_owned(),
+        };
+        let info = mock_info("guest", &[]);
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         let msg = ExecuteMsg::Receive {
             callback: NoisCallback {
@@ -300,6 +342,12 @@ mod tests {
     #[test]
     fn execute_receive_works() {
         let mut deps = instantiate_proxy();
+
+        let msg = ExecuteMsg::RollDice {
+            job_id: "123".to_owned(),
+        };
+        let info = mock_info("guest", &[]);
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         let msg = ExecuteMsg::Receive {
             callback: NoisCallback {

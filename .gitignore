@@ -20,8 +20,6 @@ debug-*.log
 .cargo-ok
 
 # Build artifacts
-hash.txt
-contracts.txt
 artifacts/
 tests/internal
 

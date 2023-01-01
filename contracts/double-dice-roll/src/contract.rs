@@ -44,8 +44,8 @@ pub fn execute(
     match msg {
         //RollDice should be called by a player who wants to roll the dice
         ExecuteMsg::RollDice { job_id } => execute_roll_dice(deps, env, info, job_id),
-        //Receive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
-        ExecuteMsg::Receive { callback } => execute_receive(deps, env, info, callback),
+        //NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
+        ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),
     }
 }
 
@@ -108,9 +108,9 @@ pub fn execute_receive(
         .map_err(|_| ContractError::InvalidRandomness)?;
     //ints_in_range provides a list of random numbers following a uniform distribution within a range.
     //in this case it will provide uniformly randomized numbers between 1 and 6
-    let [dice_outcome_1, dice_outcome_2] = ints_in_range(randomness, 1..=6);
+    let double_dice_outcome = ints_in_range(randomness, 2, 1, 6);
     //summing the dice to fit the real double dice probability distribution from 2 to 12
-    let double_dice_outcome = dice_outcome_1 + dice_outcome_2;
+    let double_dice_outcome = double_dice_outcome.iter().sum();
 
     //Preserve the immutability of the previous rounds.
     //So that the player cannot retry and change history.
@@ -209,7 +209,7 @@ mod tests {
     fn proxy_cannot_bring_an_existing_job_id() {
         let mut deps = instantiate_proxy();
 
-        let msg = ExecuteMsg::Receive {
+        let msg = ExecuteMsg::NoisReceive {
             callback: NoisCallback {
                 job_id: "round_1".to_string(),
                 randomness: HexBinary::from_hex(
@@ -221,7 +221,7 @@ mod tests {
         let info = mock_info(PROXY_ADDRESS, &[]);
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        let msg = ExecuteMsg::Receive {
+        let msg = ExecuteMsg::NoisReceive {
             callback: NoisCallback {
                 job_id: "round_1".to_string(),
                 randomness: HexBinary::from_hex(
@@ -242,7 +242,7 @@ mod tests {
     fn execute_receive_fails_for_invalid_randomness() {
         let mut deps = instantiate_proxy();
 
-        let msg = ExecuteMsg::Receive {
+        let msg = ExecuteMsg::NoisReceive {
             callback: NoisCallback {
                 job_id: "round_1".to_string(),
                 randomness: HexBinary::from_hex("ffffffff").unwrap(),
@@ -258,7 +258,7 @@ mod tests {
     fn players_cannot_request_an_existing_job_id() {
         let mut deps = instantiate_proxy();
 
-        let msg = ExecuteMsg::Receive {
+        let msg = ExecuteMsg::NoisReceive {
             callback: NoisCallback {
                 job_id: "111".to_string(),
                 randomness: HexBinary::from_hex(
@@ -284,7 +284,7 @@ mod tests {
     fn execute_receive_fails_for_wrong_sender() {
         let mut deps = instantiate_proxy();
 
-        let msg = ExecuteMsg::Receive {
+        let msg = ExecuteMsg::NoisReceive {
             callback: NoisCallback {
                 job_id: "123".to_string(),
                 randomness: HexBinary::from_hex(
@@ -301,7 +301,7 @@ mod tests {
     fn execute_receive_works() {
         let mut deps = instantiate_proxy();
 
-        let msg = ExecuteMsg::Receive {
+        let msg = ExecuteMsg::NoisReceive {
             callback: NoisCallback {
                 job_id: "123".to_string(),
                 randomness: HexBinary::from_hex(

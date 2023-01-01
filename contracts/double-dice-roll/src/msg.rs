@@ -15,7 +15,7 @@ pub enum ExecuteMsg {
     RollDice { job_id: String },
     //callback contains the randomness from drand (HexBinary) and job_id
     //callback should only be allowed to be called by the proxy contract
-    Receive { callback: NoisCallback },
+    NoisReceive { callback: NoisCallback },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]

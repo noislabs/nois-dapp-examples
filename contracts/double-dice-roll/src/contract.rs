@@ -102,8 +102,13 @@ pub fn execute_receive(
     //callback should only be allowed to be called by the proxy contract
     //otherwise anyone can cut the randomness workflow and cheat the randomness by sending the randomness directly to this contract
     ensure_eq!(info.sender, proxy, ContractError::UnauthorizedReceive);
-    let randomness: [u8; 32] = callback
-        .randomness
+
+    // In this Dapp we don't need the drand publish time. so we skip it with ..
+    let NoisCallback {
+        job_id, randomness, ..
+    } = callback;
+
+    let randomness: [u8; 32] = randomness
         .to_array()
         .map_err(|_| ContractError::InvalidRandomness)?;
     //ints_in_range provides a list of random numbers following a uniform distribution within a range.
@@ -114,11 +119,11 @@ pub fn execute_receive(
 
     //Preserve the immutability of the previous rounds.
     //So that the player cannot retry and change history.
-    let response = match DOUBLE_DICE_OUTCOME.may_load(deps.storage, &callback.job_id)? {
+    let response = match DOUBLE_DICE_OUTCOME.may_load(deps.storage, &job_id)? {
         None => Response::default(),
         Some(_randomness) => return Err(ContractError::JobIdAlreadyPresent),
     };
-    DOUBLE_DICE_OUTCOME.save(deps.storage, &callback.job_id, &double_dice_outcome)?;
+    DOUBLE_DICE_OUTCOME.save(deps.storage, &job_id, &double_dice_outcome)?;
 
     Ok(response)
 }
@@ -149,10 +154,10 @@ fn query_history(deps: Deps) -> StdResult<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::coins;
     use cosmwasm_std::testing::{
         mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
+    use cosmwasm_std::{coins, Timestamp};
     use cosmwasm_std::{Empty, HexBinary, OwnedDeps};
 
     const CREATOR: &str = "creator";
@@ -216,6 +221,7 @@ mod tests {
                     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 )
                 .unwrap(),
+                published: Timestamp::from_seconds(1111111111),
             },
         };
         let info = mock_info(PROXY_ADDRESS, &[]);
@@ -228,6 +234,7 @@ mod tests {
                     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
                 )
                 .unwrap(),
+                published: Timestamp::from_seconds(1111111111),
             },
         };
         let info = mock_info(PROXY_ADDRESS, &[]);
@@ -246,6 +253,7 @@ mod tests {
             callback: NoisCallback {
                 job_id: "round_1".to_string(),
                 randomness: HexBinary::from_hex("ffffffff").unwrap(),
+                published: Timestamp::from_seconds(1111111111),
             },
         };
         let info = mock_info(PROXY_ADDRESS, &[]);
@@ -265,6 +273,7 @@ mod tests {
                     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 )
                 .unwrap(),
+                published: Timestamp::from_seconds(1111111111),
             },
         };
         let info = mock_info(PROXY_ADDRESS, &[]);
@@ -291,6 +300,7 @@ mod tests {
                     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 )
                 .unwrap(),
+                published: Timestamp::from_seconds(1111111111),
             },
         };
         let info = mock_info("guest", &[]);
@@ -308,6 +318,7 @@ mod tests {
                     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 )
                 .unwrap(),
+                published: Timestamp::from_seconds(1111111111),
             },
         };
         let info = mock_info(PROXY_ADDRESS, &[]);

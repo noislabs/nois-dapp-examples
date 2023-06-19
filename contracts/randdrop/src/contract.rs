@@ -76,7 +76,7 @@ pub fn execute(
         ExecuteMsg::RegisterMerkleRoot { merkle_root } => {
             execute_register_merkle_root(deps, env, info, merkle_root)
         }
-        //RandDrop should be called by the manager with a future timestamp
+        /// Randdrop should be called by an eligable user to start the process
         ExecuteMsg::Randdrop { amount, proof } => execute_randdrop(deps, info, amount, proof),
         //NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),

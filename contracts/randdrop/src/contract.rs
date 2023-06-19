@@ -307,7 +307,7 @@ fn is_randdrop_winner(sender: &Addr, randomness: [u8; 32]) -> bool {
     let mut hasher = Sha256::new();
     // Concatenate the randomness and sender hash values
     hasher.update(randomness);
-    hasher.update(sender_hash);
+    hasher.update(sender.as_bytes());
     let hash = hasher.finalize();
 
     // The u64 range is large compared to the modulo, so the distribution is expected to be good enough.

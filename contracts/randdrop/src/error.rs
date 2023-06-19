@@ -35,8 +35,8 @@ pub enum ContractError {
     #[error("Verification failed")]
     VerificationFailed {},
 
-    #[error("The sender is not randomly eligible for the randdrop")]
-    NotLuncky {},
+    #[error("The sender is not a winner in the randdrop")]
+    NotLucky {},
 
     #[error("The claiming phase did not start. The random beacon is yet to be fetched")]
     RandomnessUnavailable {},

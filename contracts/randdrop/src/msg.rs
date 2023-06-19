@@ -86,5 +86,3 @@ pub struct IsClaimedResponse {
     pub is_claimed: bool,
 }
 
-#[cw_serde]
-pub struct MigrateMsg {}

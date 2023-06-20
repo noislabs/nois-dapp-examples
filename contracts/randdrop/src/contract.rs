@@ -152,12 +152,14 @@ pub fn execute_randdrop(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
-    if MERKLE_ROOT.may_load(deps.storage)?.is_none() {
+    if !MERKLE_ROOT.exists(deps.storage) {
         return Err(ContractError::MerkleRootAbsent);
     }
+
     if PARTICIPANTS.has(deps.storage, &info.sender) {
         return Err(ContractError::RandomnessAlreadyRequested);
     }
+
     if CLAIMED.has(deps.storage, &info.sender) {
         return Err(ContractError::Claimed {});
     }
@@ -193,23 +195,6 @@ pub fn execute_randdrop(
 
     Ok(response)
 }
-
-// struct NoisProxyPrices {
-//     /// manager that can change the manager , register merkle or withdraw funds
-//     pub manager: Addr,
-// }
-
-// fn get_nois_proxy_price(deps: Deps, denom: String) -> Result<Coin, ContractError> {
-//     let msg = NoisProxyPrices { round };
-//     let wasm = WasmQuery::Smart {
-//         // TODO handle this unsafe unwrap
-//         contract_addr: config.gateway.unwrap().into_string(),
-//         msg: to_binary(&msg)?,
-//     };
-//     let drand_job_response: nois_gateway::msg::DrandJobStatsResponse =
-//         deps.querier.query(&wasm.into())?;
-//     Ok(drand_job_response)
-// }
 
 pub fn execute_receive(
     deps: DepsMut,
@@ -261,17 +246,19 @@ pub fn execute_receive(
             );
             randdrop_amount
         }
-
         false => Uint128::new(0),
     };
 
-    // Update claim
     // verify not claimed
     if CLAIMED.has(deps.storage, &participant_address) {
         panic!("Strange, participant's randdrop already claimed")
-    } else {
-        CLAIMED.save(deps.storage, &participant_address, &randdrop_amount)?;
     }
+
+    // Update claim
+    CLAIMED.save(deps.storage, &participant_address, &randdrop_amount)?;
+
+    // Delete Participant Data
+    PARTICIPANTS.remove(deps.storage, &participant_address);
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
         Attribute::new("action", "receive-randomness-and-send-randdrop"),
@@ -407,7 +394,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
 
 fn query_results(deps: Deps) -> StdResult<ResultsResponse> {
     // No pagination here yet 🤷‍♂️
-    // This could fail when many people have claimed because of wemight run out of gas.
+    // This could fail when many people have claimed because we might run out of gas.
     let results = CLAIMED
         .range(deps.storage, None, None, Order::Ascending)
         .map(|result| {
@@ -652,7 +639,7 @@ mod tests {
         let info = mock_info(test_data_winner.account.as_str(), &[]);
         let msg = ExecuteMsg::Randdrop {
             amount: test_data_winner.amount,
-            proof: test_data_winner.proof,
+            proof: test_data_winner.proof.clone(),
         };
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
@@ -703,7 +690,7 @@ mod tests {
                     deps.as_ref(),
                     env.clone(),
                     QueryMsg::IsClaimed {
-                        address: test_data_winner.account
+                        address: test_data_winner.account.clone()
                     }
                 )
                 .unwrap()
@@ -739,7 +726,7 @@ mod tests {
         let info = mock_info(test_data_loser.account.as_str(), &[]);
         let msg = ExecuteMsg::Randdrop {
             amount: test_data_loser.amount,
-            proof: test_data_loser.proof,
+            proof: test_data_loser.proof.clone(),
         };
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
@@ -783,7 +770,7 @@ mod tests {
                     deps.as_ref(),
                     env,
                     QueryMsg::IsClaimed {
-                        address: test_data_loser.account
+                        address: test_data_loser.account.clone()
                     }
                 )
                 .unwrap()
@@ -820,7 +807,7 @@ mod tests {
 
         assert_eq!(
             from_binary::<ResultsResponse>(
-                &query(deps.as_ref(), env, QueryMsg::RanddropResults {}).unwrap()
+                &query(deps.as_ref(), env.clone(), QueryMsg::RanddropResults {}).unwrap()
             )
             .unwrap(),
             ResultsResponse {
@@ -836,5 +823,21 @@ mod tests {
                 ]
             }
         );
+        // Loser tries to play again
+        let info = mock_info(test_data_loser.account.as_str(), &[]);
+        let msg = ExecuteMsg::Randdrop {
+            amount: test_data_loser.amount,
+            proof: test_data_loser.proof,
+        };
+        let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::Claimed {});
+        // Winner tries to play again
+        let info = mock_info(test_data_winner.account.as_str(), &[]);
+        let msg = ExecuteMsg::Randdrop {
+            amount: test_data_winner.amount,
+            proof: test_data_winner.proof,
+        };
+        let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
+        assert_eq!(err, ContractError::Claimed {});
     }
 }

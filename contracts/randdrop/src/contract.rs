@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    ensure_eq, entry_point, to_binary, Addr, Attribute, BankMsg, Coin, Deps, DepsMut, Env,
-    HexBinary, MessageInfo, QueryResponse, Response, StdResult, Uint128, WasmMsg,
+    ensure_eq, entry_point, to_binary, Addr, Attribute, BankMsg, Coin, CosmosMsg, Deps, DepsMut,
+    Env, HexBinary, MessageInfo, Order, QueryResponse, Response, StdResult, Uint128, WasmMsg,
 };
 use nois::{NoisCallback, ProxyExecuteMsg};
 use sha2::{Digest, Sha256};
@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::error::ContractError;
 use crate::msg::{
     ConfigResponse, ExecuteMsg, InstantiateMsg, IsClaimedResponse, IsWinnerResponse,
-    MerkleRootResponse, QueryMsg,
+    MerkleRootResponse, QueryMsg, ResultsResponse,
 };
 use crate::state::{
     Config, NoisProxy, ParticipantData, CLAIMED, CONFIG, MERKLE_ROOT, PARTICIPANTS,
@@ -76,11 +76,10 @@ pub fn execute(
         ExecuteMsg::RegisterMerkleRoot { merkle_root } => {
             execute_register_merkle_root(deps, env, info, merkle_root)
         }
-        /// Randdrop should be called by an eligable user to start the process
+        // Randdrop should be called by an eligable user to start the process
         ExecuteMsg::Randdrop { amount, proof } => execute_randdrop(deps, info, amount, proof),
-        //NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
+        // NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),
-        ExecuteMsg::Claim {} => execute_claim(deps, env, info),
         ExecuteMsg::WithdrawAll { address } => execute_withdraw_all(deps, env, info, address),
     }
 }
@@ -92,6 +91,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
         QueryMsg::Config {} => to_binary(&query_config(deps)?)?,
         QueryMsg::MerkleRoot {} => to_binary(&query_merkle_root(deps)?)?,
         QueryMsg::IsClaimed { address } => to_binary(&query_is_claimed(deps, address)?)?,
+        QueryMsg::RanddropResults {} => to_binary(&query_results(deps)?)?,
     };
     Ok(response)
 }
@@ -186,7 +186,7 @@ pub fn execute_randdrop(
     // Register randdrop participant
     let participant_data = &ParticipantData {
         nois_randomness: None,
-        randdrop_amount: amount,
+        base_randdrop_amount: amount,
         is_winner: None,
     };
     PARTICIPANTS.save(deps.storage, &info.sender, participant_data)?;
@@ -243,23 +243,52 @@ pub fn execute_receive(
     if participant_data.nois_randomness.is_some() || participant_data.is_winner.is_some() {
         panic!("Strange, participant's randomness already received")
     }
-    let is_winner = is_randdrop_winner(&info.sender, randomness);
-    PARTICIPANTS.save(
-        deps.storage,
-        &participant_address,
-        &ParticipantData {
-            nois_randomness: Some(randomness),
-            randdrop_amount: participant_data.randdrop_amount,
-            is_winner: Some(is_winner),
-        },
-    )?;
+    let mut msgs = Vec::<CosmosMsg>::new();
 
-    Ok(Response::new()
-        .add_attribute("action", "receive-randomness")
-        .add_attribute("job_id", job_id)
-        .add_attribute("participant", participant_address)
-        .add_attribute("randdrop_amount", participant_data.randdrop_amount)
-        .add_attribute("is_winner", is_winner.to_string()))
+    let randdrop_amount = match is_randdrop_winner(&participant_address, randomness) {
+        true => {
+            let randdrop_amount =
+                participant_data.base_randdrop_amount * Uint128::from(AIRDROP_ODDS);
+            msgs.push(
+                BankMsg::Send {
+                    to_address: participant_address.to_string(),
+                    amount: vec![Coin {
+                        amount: randdrop_amount,
+                        denom: config.randdrop_denom.clone(),
+                    }],
+                }
+                .into(),
+            );
+            randdrop_amount
+        }
+
+        false => Uint128::new(0),
+    };
+
+    // Update claim
+    // verify not claimed
+    if CLAIMED.has(deps.storage, &participant_address) {
+        panic!("Strange, participant's randdrop already claimed")
+    } else {
+        CLAIMED.save(deps.storage, &participant_address, &randdrop_amount)?;
+    }
+
+    Ok(Response::new().add_messages(msgs).add_attributes(vec![
+        Attribute::new("action", "receive-randomness-and-send-randdrop"),
+        Attribute::new("address", info.sender),
+        Attribute::new("job_id", job_id),
+        Attribute::new("participant", participant_address),
+        Attribute::new("is_winner", (!randdrop_amount.is_zero()).to_string()),
+        Attribute::new("merkle_amount", participant_data.base_randdrop_amount), // value from the merkle tree
+        Attribute::new(
+            "send_amount",
+            Coin {
+                amount: randdrop_amount,
+                denom: config.randdrop_denom,
+            }
+            .to_string(),
+        ), // actual send amount
+    ]))
 }
 
 fn execute_withdraw_all(
@@ -300,14 +329,12 @@ fn execute_withdraw_all(
     Ok(res)
 }
 
-fn is_randdrop_winner(sender: &Addr, randomness: [u8; 32]) -> bool {
-    let sender_hash: [u8; 32] = Sha256::digest(sender.as_bytes()).into();
-
+fn is_randdrop_winner(participant: &Addr, randomness: [u8; 32]) -> bool {
     // Hash the combined value using SHA256 to generate a random number between 1 and 3
     let mut hasher = Sha256::new();
     // Concatenate the randomness and sender hash values
     hasher.update(randomness);
-    hasher.update(sender.as_bytes());
+    hasher.update(participant.as_bytes());
     let hash = hasher.finalize();
 
     // The u64 range is large compared to the modulo, so the distribution is expected to be good enough.
@@ -347,49 +374,6 @@ fn execute_register_merkle_root(
     ]))
 }
 
-fn execute_claim(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    // verify not claimed
-    if CLAIMED.has(deps.storage, &info.sender) {
-        return Err(ContractError::Claimed {});
-    }
-    println!("{}", info.sender);
-    let participant_data = match PARTICIPANTS.may_load(deps.storage, &info.sender)? {
-        Some(pd) => match pd.is_winner {
-            Some(true) => pd,
-            Some(false) => return Err(ContractError::NotLuncky {}),
-            None => return Err(ContractError::RandomnessUnavailable {}),
-        },
-        None => return Err(ContractError::Unauthorized),
-    };
-
-    println!("{}", participant_data.nois_randomness.unwrap()[0]);
-
-    // Send randdrop
-    let config = CONFIG.load(deps.storage)?;
-
-    let send_amount = Coin {
-        amount: participant_data.randdrop_amount * Uint128::from(AIRDROP_ODDS),
-        denom: config.randdrop_denom,
-    };
-    // Update claim
-    CLAIMED.save(deps.storage, &info.sender, &())?;
-    // Delete participant data
-    PARTICIPANTS.remove(deps.storage, &info.sender);
-
-    let res = Response::new()
-        .add_message(BankMsg::Send {
-            to_address: info.sender.to_string(),
-            amount: vec![send_amount.clone()],
-        })
-        .add_attributes(vec![
-            Attribute::new("action", "claim"),
-            Attribute::new("address", info.sender),
-            Attribute::new("merkle_amount", participant_data.randdrop_amount), // value from the merkle tree
-            Attribute::new("send_amount", send_amount.to_string()),            // actual send amount
-        ]);
-    Ok(res)
-}
-
 fn is_proof_valid(
     address: Addr,
     amount: Uint128,
@@ -419,6 +403,19 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     Ok(ConfigResponse {
         manager: config.manager.to_string(),
     })
+}
+
+fn query_results(deps: Deps) -> StdResult<ResultsResponse> {
+    // No pagination here yet 🤷‍♂️
+    // This could fail when many people have claimed because of wemight run out of gas.
+    let results = CLAIMED
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|result| {
+            let (address, amount) = result.unwrap();
+            (address.into_string(), amount)
+        })
+        .collect();
+    Ok(ResultsResponse { results })
 }
 
 fn query_is_winner(deps: Deps, address: String) -> StdResult<IsWinnerResponse> {
@@ -451,11 +448,14 @@ fn query_is_claimed(deps: Deps, address: String) -> StdResult<IsClaimedResponse>
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use cosmwasm_std::testing::{
         mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
-    use cosmwasm_std::{from_binary, from_slice, Empty, HexBinary, OwnedDeps, SubMsg, Timestamp};
+    use cosmwasm_std::{
+        from_binary, from_slice, Empty, HexBinary, OwnedDeps, StdError, SubMsg, Timestamp,
+    };
     use serde::Deserialize;
 
     const CREATOR: &str = "creator";
@@ -608,7 +608,8 @@ mod tests {
         assert_eq!(err, ContractError::MerkleImmutable {});
     }
 
-    const TEST_DATA: &[u8] = include_bytes!("../tests/nois_testnet_005_test_data.json");
+    const TEST_DATA_WINNER: &[u8] = include_bytes!("../tests/winner.json");
+    const TEST_DATA_LOSER: &[u8] = include_bytes!("../tests/loser.json");
 
     #[derive(Deserialize, Debug)]
     struct Encoded {
@@ -620,22 +621,22 @@ mod tests {
 
     #[test]
     fn participate_in_randdrop_and_claim_process_works() {
-        // Run test 1
         let mut deps = instantiate_contract();
-        let test_data: Encoded = from_slice(TEST_DATA).unwrap();
+        let test_data_winner: Encoded = from_slice(TEST_DATA_WINNER).unwrap();
+        let test_data_loser: Encoded = from_slice(TEST_DATA_LOSER).unwrap();
 
         let env = mock_env();
         let info = mock_info(MANAGER, &[]);
         let msg = ExecuteMsg::RegisterMerkleRoot {
-            merkle_root: test_data.root,
+            merkle_root: test_data_winner.root,
         };
-        let _res = execute(deps.as_mut(), env, info, msg).unwrap();
+        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
         // Someone not from the randdrop list tries to participate
         let info = mock_info("Some-random-person-not-on-the-list", &[]);
         let msg = ExecuteMsg::Randdrop {
             amount: Uint128::new(4500000),
-            proof: test_data.proof.clone(),
+            proof: test_data_winner.proof.clone(),
         };
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
@@ -643,15 +644,15 @@ mod tests {
         let info = mock_info("nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve", &[]);
         let msg = ExecuteMsg::Randdrop {
             amount: Uint128::new(14500000),
-            proof: test_data.proof.clone(),
+            proof: test_data_winner.proof.clone(),
         };
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
         // Correct account with correct amount and proof
-        let info = mock_info(test_data.account.as_str(), &[]);
+        let info = mock_info(test_data_winner.account.as_str(), &[]);
         let msg = ExecuteMsg::Randdrop {
-            amount: Uint128::new(4500000),
-            proof: test_data.proof,
+            amount: test_data_winner.amount,
+            proof: test_data_winner.proof,
         };
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
@@ -671,24 +672,24 @@ mod tests {
         assert_eq!(
             res.attributes,
             vec![
-                Attribute::new("action", "receive-randomness"),
+                Attribute::new("action", "receive-randomness-and-send-randdrop"),
+                Attribute::new("address", "the proxy of choice"),
                 Attribute::new(
                     "job_id",
                     "randdrop-nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve"
                 ),
                 Attribute::new("participant", "nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve"),
-                Attribute::new("randdrop_amount", "4500000"),
                 Attribute::new("is_winner", true.to_string()),
+                Attribute::new("merkle_amount", 4500000.to_string()),
+                Attribute::new(
+                    "send_amount",
+                    "13500000ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
+                        .to_string()
+                ),
             ]
         );
-
-        let msg = ExecuteMsg::Claim {};
-
-        let env = mock_env();
-        let info = mock_info("nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve", &[]);
-        let res = execute(deps.as_mut(), env.clone(), info.clone(), msg.clone()).unwrap();
         let expected = SubMsg::new(BankMsg::Send {
-            to_address: info.sender.to_string(),
+            to_address: "nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve".to_string(),
             amount: vec![Coin {
                 amount: Uint128::new(13500000), // 4500000*3
                 denom: "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
@@ -696,33 +697,13 @@ mod tests {
             }],
         });
         assert_eq!(res.messages, vec![expected]);
-
-        assert_eq!(
-            res.attributes,
-            vec![
-                Attribute::new("action", "claim"),
-                Attribute::new("address", test_data.account.clone()),
-                Attribute::new("merkle_amount", test_data.amount),
-                Attribute::new(
-                    "send_amount",
-                    Coin {
-                        amount: test_data.amount * Uint128::new(AIRDROP_ODDS as u128),
-                        denom:
-                            "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
-                                .to_string(),
-                    }
-                    .to_string()
-                ),
-            ]
-        );
-
         assert!(
             from_binary::<IsClaimedResponse>(
                 &query(
                     deps.as_ref(),
                     env.clone(),
                     QueryMsg::IsClaimed {
-                        address: test_data.account
+                        address: test_data_winner.account
                     }
                 )
                 .unwrap()
@@ -730,9 +711,86 @@ mod tests {
             .unwrap()
             .is_claimed
         );
-        // Try and claim again
-        let res = execute(deps.as_mut(), env, info, msg).unwrap_err();
-        assert_eq!(res, ContractError::Claimed {});
+
+        // Loser's turn
+        // Loser fears losing so tries not to play and somehow get the proxy to send some randomness on his behalf
+        let msg = ExecuteMsg::NoisReceive {
+            callback: NoisCallback {
+                job_id: "randdrop-nois1svvyq5hwf6syvn6mklsxsm0ly7jvtla90q7gfs".to_string(),
+                published: Timestamp::from_seconds(1682086395),
+                randomness: HexBinary::from_hex(
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa129",
+                )
+                .unwrap(),
+            },
+        };
+        let info = mock_info(PROXY_ADDRESS, &[]);
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        // Should fail because loser did not request randomness yet
+        assert_eq!(
+            StdError::NotFound {
+                kind: "randdrop::state::ParticipantData".to_string()
+            }
+            .to_string(),
+            err.to_string(),
+        );
+        // Loser decides to play
+        // Correct account with correct amount and proof
+        let info = mock_info(test_data_loser.account.as_str(), &[]);
+        let msg = ExecuteMsg::Randdrop {
+            amount: test_data_loser.amount,
+            proof: test_data_loser.proof,
+        };
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // Receive randomness
+        let msg = ExecuteMsg::NoisReceive {
+            callback: NoisCallback {
+                job_id: "randdrop-nois1svvyq5hwf6syvn6mklsxsm0ly7jvtla90q7gfs".to_string(),
+                published: Timestamp::from_seconds(1682086395),
+                randomness: HexBinary::from_hex(
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa129",
+                )
+                .unwrap(),
+            },
+        };
+        let info = mock_info(PROXY_ADDRESS, &[]);
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                Attribute::new("action", "receive-randomness-and-send-randdrop"),
+                Attribute::new("address", "the proxy of choice"),
+                Attribute::new(
+                    "job_id",
+                    "randdrop-nois1svvyq5hwf6syvn6mklsxsm0ly7jvtla90q7gfs"
+                ),
+                Attribute::new("participant", "nois1svvyq5hwf6syvn6mklsxsm0ly7jvtla90q7gfs"),
+                Attribute::new("is_winner", false.to_string()),
+                Attribute::new("merkle_amount", 5869.to_string()),
+                Attribute::new(
+                    "send_amount",
+                    "0ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
+                        .to_string()
+                ),
+            ]
+        );
+
+        assert_eq!(res.messages, vec![]);
+        assert!(
+            from_binary::<IsClaimedResponse>(
+                &query(
+                    deps.as_ref(),
+                    env,
+                    QueryMsg::IsClaimed {
+                        address: test_data_loser.account
+                    }
+                )
+                .unwrap()
+            )
+            .unwrap()
+            .is_claimed
+        );
 
         // Stop aridrop and Widhdraw funds
         let env = mock_env();
@@ -748,7 +806,7 @@ mod tests {
         let msg = ExecuteMsg::WithdrawAll {
             address: "withdraw_address".to_string(),
         };
-        let res = execute(deps.as_mut(), env, info, msg).unwrap();
+        let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
         let expected = SubMsg::new(BankMsg::Send {
             to_address: "withdraw_address".to_string(),
@@ -759,5 +817,24 @@ mod tests {
             }],
         });
         assert_eq!(res.messages, vec![expected]);
+
+        assert_eq!(
+            from_binary::<ResultsResponse>(
+                &query(deps.as_ref(), env, QueryMsg::RanddropResults {}).unwrap()
+            )
+            .unwrap(),
+            ResultsResponse {
+                results: vec![
+                    (
+                        "nois1svvyq5hwf6syvn6mklsxsm0ly7jvtla90q7gfs".to_string(),
+                        Uint128::new(0)
+                    ),
+                    (
+                        "nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve".to_string(),
+                        Uint128::new(13500000)
+                    )
+                ]
+            }
+        );
     }
 }

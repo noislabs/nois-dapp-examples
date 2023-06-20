@@ -37,13 +37,13 @@ pub enum ExecuteMsg {
         /// Proof is hex-encoded merkle proof.
         proof: Vec<HexBinary>,
     },
-    //callback contains the randomness from drand (HexBinary) and job_id
-    //callback should only be allowed to be called by the proxy contract
+    // callback contains the randomness from drand (HexBinary) and job_id
+    // callback should only be allowed to be called by the proxy contract
+    // This entrypoint also claims the randdrop
+    // The claim does not check if contract has enough funds, manager must ensure it.
     NoisReceive {
         callback: NoisCallback,
     },
-    /// Claim does not check if contract has enough funds, manager must ensure it.
-    Claim {},
     // Withdraw all available balance of the AIRDROP DENOM to the withdrawal address
     WithdrawAll {
         address: String,
@@ -63,11 +63,19 @@ pub enum QueryMsg {
     // It does not mean that the address was eligible at the first place for the randdrop as there is no way for the contract to check eligibility just by looking at the address.
     #[returns(IsWinnerResponse)]
     IsWinner { address: String },
+    /// Query randdrop results
+    #[returns(ResultsResponse)]
+    RanddropResults {},
 }
 
 #[cw_serde]
 pub struct ConfigResponse {
     pub manager: String,
+}
+
+#[cw_serde]
+pub struct ResultsResponse {
+    pub results: Vec<(String, Uint128)>,
 }
 
 #[cw_serde]
@@ -86,3 +94,8 @@ pub struct IsClaimedResponse {
     pub is_claimed: bool,
 }
 
+#[cw_serde]
+pub struct QueriedRanddropResult {
+    pub participant: String,
+    pub amount: Uint128,
+}

@@ -25,7 +25,7 @@ pub struct ParticipantData {
     // The randomness beacon received from the proxy
     pub nois_randomness: Option<[u8; 32]>,
     // amount provided during proof
-    pub randdrop_amount: Uint128,
+    pub base_randdrop_amount: Uint128,
     // true if the participant won
     pub is_winner: Option<bool>,
 }
@@ -41,4 +41,4 @@ pub const PARTICIPANTS_PREFIX: &str = "participants";
 pub const PARTICIPANTS: Map<&Addr, ParticipantData> = Map::new(PARTICIPANTS_PREFIX);
 
 pub const CLAIMED_PREFIX: &str = "claimed";
-pub const CLAIMED: Map<&Addr, ()> = Map::new(CLAIMED_PREFIX);
+pub const CLAIMED: Map<&Addr, Uint128> = Map::new(CLAIMED_PREFIX);

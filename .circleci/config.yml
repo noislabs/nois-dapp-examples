@@ -6,6 +6,7 @@ workflows:
     jobs:
       - contract_double_dice_roll
       - contract_randdrop
+      - contract_randdrop-global
       - lint
       - wasm-build
   deploy:
@@ -77,6 +78,33 @@ jobs:
             - target
           key: cargocache-randdrop-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
 
+  contract_randdrop-global:
+    docker:
+      - image: rust:1.63.0
+    working_directory: ~/project/contracts/randdrop-global
+    steps:
+      - checkout:
+          path: ~/project
+      - run:
+          name: Version information
+          command: rustc --version; cargo --version; rustup --version
+      - restore_cache:
+          keys:
+            - cargocache-randdrop-global-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
+      - run:
+          name: Unit Tests
+          environment:
+            RUST_BACKTRACE: 1
+          command: cargo unit-test --locked
+      - run:
+          name: Build and run schema generator
+          command: cargo schema --locked
+      - save_cache:
+          paths:
+            - /usr/local/cargo/registry
+            - target
+          key: cargocache-randdrop-global-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
+
   lint:
     docker:
       - image: rust:1.63.0
@@ -146,6 +174,7 @@ jobs:
           paths:
             - double_dice_roll.wasm
             - randdrop.wasm
+            - randdrop_global.wasm
 
   # This job roughly follows the instructions from https://circleci.com/blog/publishing-to-github-releases-via-circleci/
   build_and_upload_contracts:

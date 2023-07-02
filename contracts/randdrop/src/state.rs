@@ -30,6 +30,10 @@ pub struct ParticipantData {
     pub base_randdrop_amount: Uint128,
     // true if the participant won
     pub is_winner: Option<bool>,
+    // true if the randdrop is claimed
+    pub has_claimed: bool,
+    // amount that the paricipate claimed, could be 0 if participant didn't win
+    pub amount_claimed: Option<Uint128>,
 }
 
 pub const CONFIG_KEY: &str = "config";
@@ -38,6 +42,3 @@ pub const CONFIG: Item<Config> = Item::new(CONFIG_KEY);
 pub const PARTICIPANTS_PREFIX: &str = "participants";
 /// A map that stores participant addresses. Think of this as a set.
 pub const PARTICIPANTS: Map<&Addr, ParticipantData> = Map::new(PARTICIPANTS_PREFIX);
-
-pub const CLAIMED_PREFIX: &str = "claimed";
-pub const CLAIMED: Map<&Addr, Uint128> = Map::new(CLAIMED_PREFIX);

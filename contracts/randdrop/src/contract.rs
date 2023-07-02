@@ -7,10 +7,10 @@ use sha2::{Digest, Sha256};
 
 use crate::error::ContractError;
 use crate::msg::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, IsClaimedResponse, IsWinnerResponse, QueryMsg,
+    ConfigResponse, ExecuteMsg, HasClaimedResponse, InstantiateMsg, IsWinnerResponse, QueryMsg,
     ResultsResponse,
 };
-use crate::state::{Config, NoisProxy, ParticipantData, CLAIMED, CONFIG, PARTICIPANTS};
+use crate::state::{Config, NoisProxy, ParticipantData, CONFIG, PARTICIPANTS};
 
 /// The winning chance is 1/AIRDROP_ODDS
 const AIRDROP_ODDS: u64 = 3;
@@ -94,7 +94,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     let response = match msg {
         QueryMsg::IsWinner { address } => to_binary(&query_is_winner(deps, address)?)?,
         QueryMsg::Config {} => to_binary(&query_config(deps)?)?,
-        QueryMsg::IsClaimed { address } => to_binary(&query_is_claimed(deps, address)?)?,
+        QueryMsg::HasClaimed { address } => to_binary(&query_has_claimed(deps, address)?)?,
         QueryMsg::RanddropResults {} => to_binary(&query_results(deps)?)?,
     };
     Ok(response)
@@ -169,11 +169,7 @@ pub fn execute_randdrop(
     let config = CONFIG.load(deps.storage)?;
 
     if PARTICIPANTS.has(deps.storage, &info.sender) {
-        return Err(ContractError::RandomnessAlreadyRequested);
-    }
-
-    if CLAIMED.has(deps.storage, &info.sender) {
-        return Err(ContractError::Claimed {});
+        return Err(ContractError::UserAlreadyParticipated);
     }
 
     // The contract will spend NOIS tokens on this info.sender to buy randomness.
@@ -201,6 +197,8 @@ pub fn execute_randdrop(
         nois_randomness: None,
         base_randdrop_amount: amount,
         is_winner: None,
+        has_claimed: false,
+        amount_claimed: None,
     };
     PARTICIPANTS.save(deps.storage, &info.sender, participant_data)?;
 
@@ -235,7 +233,7 @@ pub fn execute_receive(
     let participant_address = deps.api.addr_validate(participant_address)?;
 
     // Make sure the participant is registered
-    let participant_data = PARTICIPANTS.load(deps.storage, &participant_address)?;
+    let mut participant_data = PARTICIPANTS.load(deps.storage, &participant_address)?;
     assert!(
         participant_data.nois_randomness.is_none(),
         "Strange, participant's randomness already received"
@@ -244,9 +242,14 @@ pub fn execute_receive(
         participant_data.is_winner.is_none(),
         "Strange, participant's is_winner must not be set"
     );
+    assert!(
+        !participant_data.has_claimed,
+        "Strange, participant's randdrop already claimed"
+    );
     let mut msgs = Vec::<CosmosMsg>::new();
 
-    let randdrop_amount = if is_randdrop_winner(&participant_address, randomness) {
+    participant_data.amount_claimed = if is_randdrop_winner(&participant_address, randomness) {
+        participant_data.is_winner = Some(true);
         let randdrop_amount = participant_data.base_randdrop_amount * Uint128::from(AIRDROP_ODDS);
         msgs.push(
             BankMsg::Send {
@@ -258,33 +261,29 @@ pub fn execute_receive(
             }
             .into(),
         );
-        randdrop_amount
+        Some(randdrop_amount)
     } else {
-        Uint128::new(0)
+        participant_data.is_winner = Some(false);
+        Some(Uint128::new(0))
     };
 
-    // verify not claimed
-    if CLAIMED.has(deps.storage, &participant_address) {
-        panic!("Strange, participant's randdrop already claimed")
-    }
+    // Update Participant Data
+    participant_data.has_claimed = true;
+    participant_data.nois_randomness = Some(randomness);
 
-    // Update claim
-    CLAIMED.save(deps.storage, &participant_address, &randdrop_amount)?;
-
-    // Delete Participant Data
-    PARTICIPANTS.remove(deps.storage, &participant_address);
+    PARTICIPANTS.save(deps.storage, &participant_address, &participant_data)?;
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
         Attribute::new("action", "receive-randomness-and-send-randdrop"),
         Attribute::new("address", info.sender),
         Attribute::new("job_id", job_id),
         Attribute::new("participant", participant_address),
-        Attribute::new("is_winner", (!randdrop_amount.is_zero()).to_string()),
+        Attribute::new("is_winner", participant_data.is_winner.unwrap().to_string()),
         Attribute::new("merkle_amount", participant_data.base_randdrop_amount), // value from the merkle tree
         Attribute::new(
             "send_amount",
             Coin {
-                amount: randdrop_amount,
+                amount: participant_data.amount_claimed.unwrap(),
                 denom: config.randdrop_denom,
             }
             .to_string(),
@@ -386,11 +385,15 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
 fn query_results(deps: Deps) -> StdResult<ResultsResponse> {
     // No pagination here yet 🤷‍♂️
     // This could fail when many people have claimed because we might run out of gas.
-    let results = CLAIMED
+    let results = PARTICIPANTS
         .range(deps.storage, None, None, Order::Ascending)
+        .filter(|participant| participant.as_ref().unwrap().1.has_claimed)
         .map(|result| {
-            let (address, amount) = result.unwrap();
-            (address.into_string(), amount)
+            let (address, paticipant_data) = result.unwrap();
+            (
+                address.into_string(),
+                paticipant_data.amount_claimed.unwrap(),
+            )
         })
         .collect();
     Ok(ResultsResponse { results })
@@ -409,10 +412,12 @@ fn query_is_winner(deps: Deps, address: String) -> StdResult<IsWinnerResponse> {
     Ok(IsWinnerResponse { is_winner })
 }
 
-fn query_is_claimed(deps: Deps, address: String) -> StdResult<IsClaimedResponse> {
+fn query_has_claimed(deps: Deps, address: String) -> StdResult<HasClaimedResponse> {
     let address = deps.api.addr_validate(&address)?;
-    let is_claimed = CLAIMED.has(deps.storage, &address);
-    let resp = IsClaimedResponse { is_claimed };
+    let has_claimed = PARTICIPANTS
+        .may_load(deps.storage, &address)?
+        .map(|pd| pd.has_claimed);
+    let resp = HasClaimedResponse { has_claimed };
 
     Ok(resp)
 }
@@ -638,20 +643,19 @@ mod tests {
             }],
         });
         assert_eq!(res.messages, vec![expected]);
-        assert!(
-            from_binary::<IsClaimedResponse>(
-                &query(
-                    deps.as_ref(),
-                    env.clone(),
-                    QueryMsg::IsClaimed {
-                        address: test_data_winner.account.clone()
-                    }
-                )
-                .unwrap()
+        assert!(from_binary::<HasClaimedResponse>(
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::HasClaimed {
+                    address: test_data_winner.account.clone()
+                }
             )
             .unwrap()
-            .is_claimed
-        );
+        )
+        .unwrap()
+        .has_claimed
+        .unwrap());
 
         // Loser's turn
         // Loser fears losing so tries not to play and somehow get the proxy to send some randomness on his behalf
@@ -718,20 +722,19 @@ mod tests {
         );
 
         assert_eq!(res.messages, vec![]);
-        assert!(
-            from_binary::<IsClaimedResponse>(
-                &query(
-                    deps.as_ref(),
-                    env,
-                    QueryMsg::IsClaimed {
-                        address: test_data_loser.account.clone()
-                    }
-                )
-                .unwrap()
+        assert!(from_binary::<HasClaimedResponse>(
+            &query(
+                deps.as_ref(),
+                env,
+                QueryMsg::HasClaimed {
+                    address: test_data_loser.account.clone()
+                }
             )
             .unwrap()
-            .is_claimed
-        );
+        )
+        .unwrap()
+        .has_claimed
+        .unwrap());
 
         // Stop aridrop and Widhdraw funds
         let env = mock_env();
@@ -784,7 +787,7 @@ mod tests {
             proof: test_data_loser.proof,
         };
         let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Claimed {});
+        assert_eq!(err, ContractError::UserAlreadyParticipated {});
         // Winner tries to play again
         let info = mock_info(test_data_winner.account.as_str(), &[]);
         let msg = ExecuteMsg::Participate {
@@ -792,6 +795,6 @@ mod tests {
             proof: test_data_winner.proof,
         };
         let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Claimed {});
+        assert_eq!(err, ContractError::UserAlreadyParticipated {});
     }
 }

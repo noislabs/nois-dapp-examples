@@ -52,6 +52,6 @@ pub enum ContractError {
     #[error("Invalid Proof")]
     InvalidProof,
 
-    #[error("The sender address has already requested randomness")]
-    RandomnessAlreadyRequested,
+    #[error("The sender address has already requested randomness and maybe received the result")]
+    UserAlreadyParticipated,
 }

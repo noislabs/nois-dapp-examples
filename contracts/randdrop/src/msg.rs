@@ -54,8 +54,8 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(ConfigResponse)]
     Config {},
-    #[returns(IsClaimedResponse)]
-    IsClaimed { address: String },
+    #[returns(HasClaimedResponse)]
+    HasClaimed { address: String },
     // An address that is lucky only means that the Nois randomness hashed with the address gives a good match
     // It does not mean that the address was eligible at the first place for the randdrop as there is no way for the contract to check eligibility just by looking at the address.
     #[returns(IsWinnerResponse)]
@@ -92,8 +92,9 @@ pub struct IsWinnerResponse {
 }
 
 #[cw_serde]
-pub struct IsClaimedResponse {
-    pub is_claimed: bool,
+pub struct HasClaimedResponse {
+    // None means not a participant
+    pub has_claimed: Option<bool>,
 }
 
 #[cw_serde]

@@ -82,7 +82,9 @@ pub fn execute(
             merkle_root,
         ),
         // Randdrop should be called by an eligable user to start the process
-        ExecuteMsg::Participate { amount, proof } => execute_randdrop(deps, info, amount, proof),
+        ExecuteMsg::Participate { amount, proof } => {
+            execute_randdrop(deps, env, info, amount, proof)
+        }
         // NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),
         ExecuteMsg::WithdrawAll { address } => execute_withdraw_all(deps, env, info, address),
@@ -163,6 +165,7 @@ fn execute_update_config(
 // This function will call the proxy and ask for the randomness round
 pub fn execute_randdrop(
     deps: DepsMut,
+    env: Env,
     info: MessageInfo,
     amount: Uint128,
     proof: Vec<HexBinary>,
@@ -200,6 +203,9 @@ pub fn execute_randdrop(
         is_winner: None,
         has_claimed: false,
         amount_claimed: None,
+        participate_time: env.block.time,
+        claim_time: None,
+        randdrop_duration: None,
     };
     PARTICIPANTS.save(deps.storage, &info.sender, participant_data)?;
 
@@ -208,7 +214,7 @@ pub fn execute_randdrop(
 
 pub fn execute_receive(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     callback: NoisCallback,
 ) -> Result<Response, ContractError> {
@@ -269,10 +275,21 @@ pub fn execute_receive(
     };
 
     // Update Participant Data
-    participant_data.has_claimed = true;
-    participant_data.nois_randomness = Some(randomness);
-
-    PARTICIPANTS.save(deps.storage, &participant_address, &participant_data)?;
+    let new_participant_data = ParticipantData {
+        nois_randomness: Some(randomness),
+        has_claimed: true,
+        amount_claimed: participant_data.amount_claimed,
+        base_randdrop_amount: participant_data.base_randdrop_amount,
+        claim_time: Some(env.block.time),
+        is_winner: participant_data.is_winner,
+        participate_time: participant_data.participate_time,
+        randdrop_duration: Some(
+            env.block
+                .time
+                .minus_nanos(participant_data.participate_time.nanos()),
+        ),
+    };
+    PARTICIPANTS.save(deps.storage, &participant_address, &new_participant_data)?;
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
         Attribute::new("action", "receive-randomness-and-send-randdrop"),
@@ -715,7 +732,10 @@ mod tests {
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: None,
                     has_claimed: false,
-                    amount_claimed: None
+                    amount_claimed: None,
+                    participate_time: Timestamp::from_nanos(1571797419879305533),
+                    claim_time: None,
+                    randdrop_duration: None,
                 })
             }
         );
@@ -836,7 +856,10 @@ mod tests {
                     base_randdrop_amount: Uint128::new(4500000),
                     is_winner: Some(true),
                     has_claimed: true,
-                    amount_claimed: Some(Uint128::new(13500000))
+                    amount_claimed: Some(Uint128::new(13500000)),
+                    participate_time: Timestamp::from_nanos(1571797419879305533),
+                    claim_time: Some(Timestamp::from_nanos(1571797419879305533)),
+                    randdrop_duration: Some(Timestamp::from_nanos(0)),
                 })
             }
         );
@@ -863,7 +886,10 @@ mod tests {
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: Some(false),
                     has_claimed: true,
-                    amount_claimed: Some(Uint128::new(0))
+                    amount_claimed: Some(Uint128::new(0)),
+                    participate_time: Timestamp::from_nanos(1571797419879305533),
+                    claim_time: Some(Timestamp::from_nanos(1571797419879305533)),
+                    randdrop_duration: Some(Timestamp::from_nanos(0)),
                 })
             }
         );

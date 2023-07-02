@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Coin, HexBinary, Uint128};
+use cosmwasm_std::{Addr, Coin, HexBinary, Timestamp, Uint128};
 use cw_storage_plus::{Item, Map};
 
 #[cw_serde]
@@ -34,6 +34,12 @@ pub struct ParticipantData {
     pub has_claimed: bool,
     // amount that the paricipate claimed, could be 0 if participant didn't win
     pub amount_claimed: Option<Uint128>,
+    // The begin participation time
+    pub participate_time: Timestamp,
+    // The randdrop claiming time
+    pub claim_time: Option<Timestamp>,
+    // randdrop duration end to end. participate_time - claim_time
+    pub randdrop_duration: Option<Timestamp>,
 }
 
 pub const CONFIG_KEY: &str = "config";

@@ -180,7 +180,7 @@ pub fn execute_randdrop(
     // To prevent spam and users abusing the funds, we only allow addresses listed on the randdrop to call this entrypoint
     // Sending the proof here will make sure that the sender is a potential randdrop winner
     if !is_proof_valid(info.sender.clone(), amount, config.merkle_root, proof)? {
-        return Err(ContractError::Unauthorized {});
+        return Err(ContractError::InvalidProof {});
     }
 
     // Get the price from the nois-proxy
@@ -580,7 +580,7 @@ mod tests {
             proof: test_data_winner.proof.clone(),
         };
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Unauthorized {});
+        assert_eq!(err, ContractError::InvalidProof);
         // Someone from the list trying to fake the amount they should get
         let info = mock_info("nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve", &[]);
         let msg = ExecuteMsg::Randdrop {
@@ -588,7 +588,7 @@ mod tests {
             proof: test_data_winner.proof.clone(),
         };
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Unauthorized {});
+        assert_eq!(err, ContractError::InvalidProof {});
         // Correct account with correct amount and proof
         let info = mock_info(test_data_winner.account.as_str(), &[]);
         let msg = ExecuteMsg::Randdrop {

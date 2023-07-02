@@ -220,7 +220,7 @@ pub fn execute_receive(
     let job_id = callback.job_id;
     let participant_address = job_id
         .strip_prefix("randdrop-")
-        .unwrap_or_else(|| panic!("Strange, how is the job-id not prefixed with randdrop-"));
+        .expect("Strange, how is the job-id not prefixed with randdrop-");
     let participant_address = deps.api.addr_validate(participant_address)?;
 
     // Make sure the participant is registered

@@ -7,8 +7,8 @@ use sha2::{Digest, Sha256};
 
 use crate::error::ContractError;
 use crate::msg::{
-    ConfigResponse, ExecuteMsg, HasClaimedResponse, InstantiateMsg, IsWinnerResponse, QueryMsg,
-    ResultsResponse,
+    ConfigResponse, ExecuteMsg, HasClaimedResponse, InstantiateMsg, IsWinnerResponse,
+    ParticipantResponse, QueryMsg, ResultsResponse,
 };
 use crate::state::{Config, NoisProxy, ParticipantData, CONFIG, PARTICIPANTS};
 
@@ -96,6 +96,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
         QueryMsg::Config {} => to_binary(&query_config(deps)?)?,
         QueryMsg::HasClaimed { address } => to_binary(&query_has_claimed(deps, address)?)?,
         QueryMsg::RanddropResults {} => to_binary(&query_results(deps)?)?,
+        QueryMsg::Participant { address } => to_binary(&query_participant(deps, address)?)?,
     };
     Ok(response)
 }
@@ -422,6 +423,14 @@ fn query_has_claimed(deps: Deps, address: String) -> StdResult<HasClaimedRespons
     Ok(resp)
 }
 
+fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantResponse> {
+    let address = deps.api.addr_validate(&address)?;
+    let participant = PARTICIPANTS.may_load(deps.storage, &address)?;
+    let resp = ParticipantResponse { participant };
+
+    Ok(resp)
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -687,6 +696,29 @@ mod tests {
             proof: test_data_loser.proof.clone(),
         };
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        // Check  loser (didnt lose yet) data before receiving the randomness.
+        assert_eq!(
+            from_binary::<ParticipantResponse>(
+                &query(
+                    deps.as_ref(),
+                    env.clone(),
+                    QueryMsg::Participant {
+                        address: "nois1svvyq5hwf6syvn6mklsxsm0ly7jvtla90q7gfs".to_string()
+                    }
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            ParticipantResponse {
+                participant: Some(ParticipantData {
+                    nois_randomness: None,
+                    base_randdrop_amount: Uint128::new(5869),
+                    is_winner: None,
+                    has_claimed: false,
+                    amount_claimed: None
+                })
+            }
+        );
 
         // Receive randomness
         let msg = ExecuteMsg::NoisReceive {
@@ -779,6 +811,76 @@ mod tests {
                     )
                 ]
             }
+        );
+
+        // Check winner data
+        assert_eq!(
+            from_binary::<ParticipantResponse>(
+                &query(
+                    deps.as_ref(),
+                    env.clone(),
+                    QueryMsg::Participant {
+                        address: "nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve".to_string()
+                    }
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            ParticipantResponse {
+                participant: Some(ParticipantData {
+                    nois_randomness: Some([
+                        170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170,
+                        170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170,
+                        161, 41
+                    ]),
+                    base_randdrop_amount: Uint128::new(4500000),
+                    is_winner: Some(true),
+                    has_claimed: true,
+                    amount_claimed: Some(Uint128::new(13500000))
+                })
+            }
+        );
+        // Check loser data
+        assert_eq!(
+            from_binary::<ParticipantResponse>(
+                &query(
+                    deps.as_ref(),
+                    env.clone(),
+                    QueryMsg::Participant {
+                        address: "nois1svvyq5hwf6syvn6mklsxsm0ly7jvtla90q7gfs".to_string()
+                    }
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            ParticipantResponse {
+                participant: Some(ParticipantData {
+                    nois_randomness: Some([
+                        170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170,
+                        170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170,
+                        161, 41
+                    ]),
+                    base_randdrop_amount: Uint128::new(5869),
+                    is_winner: Some(false),
+                    has_claimed: true,
+                    amount_claimed: Some(Uint128::new(0))
+                })
+            }
+        );
+        // Check not participant data
+        assert_eq!(
+            from_binary::<ParticipantResponse>(
+                &query(
+                    deps.as_ref(),
+                    env.clone(),
+                    QueryMsg::Participant {
+                        address: "miss_did_not_participate".to_string()
+                    }
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            ParticipantResponse { participant: None }
         );
         // Loser tries to play again
         let info = mock_info(test_data_loser.account.as_str(), &[]);

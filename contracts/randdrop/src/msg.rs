@@ -2,6 +2,8 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{HexBinary, Uint128};
 use nois::NoisCallback;
 
+use crate::state::ParticipantData;
+
 #[cw_serde]
 pub struct InstantiateMsg {
     /// manager if none set to info.sender.
@@ -63,6 +65,9 @@ pub enum QueryMsg {
     /// Query randdrop results
     #[returns(ResultsResponse)]
     RanddropResults {},
+    /// Query a participant's data
+    #[returns(ParticipantResponse)]
+    Participant { address: String },
 }
 
 #[cw_serde]
@@ -95,6 +100,12 @@ pub struct IsWinnerResponse {
 pub struct HasClaimedResponse {
     // None means not a participant
     pub has_claimed: Option<bool>,
+}
+
+#[cw_serde]
+pub struct ParticipantResponse {
+    // None means not a participant
+    pub participant: Option<ParticipantData>,
 }
 
 #[cw_serde]

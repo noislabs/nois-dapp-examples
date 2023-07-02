@@ -29,7 +29,7 @@ pub enum ExecuteMsg {
         merkle_root: Option<HexBinary>,
     },
     // This will trigger fetching the unpredictable random beacon
-    Randdrop {
+    Participate {
         /// The amount which is stored in the merkle tree. If a wrong amount is used here,
         /// no entry will be found.
         amount: Uint128,

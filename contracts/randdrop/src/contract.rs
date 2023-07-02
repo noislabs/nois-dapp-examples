@@ -82,7 +82,7 @@ pub fn execute(
             merkle_root,
         ),
         // Randdrop should be called by an eligable user to start the process
-        ExecuteMsg::Randdrop { amount, proof } => execute_randdrop(deps, info, amount, proof),
+        ExecuteMsg::Participate { amount, proof } => execute_randdrop(deps, info, amount, proof),
         // NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),
         ExecuteMsg::WithdrawAll { address } => execute_withdraw_all(deps, env, info, address),
@@ -575,7 +575,7 @@ mod tests {
 
         // Someone not from the randdrop list tries to participate
         let info = mock_info("Some-random-person-not-on-the-list", &[]);
-        let msg = ExecuteMsg::Randdrop {
+        let msg = ExecuteMsg::Participate {
             amount: Uint128::new(4500000),
             proof: test_data_winner.proof.clone(),
         };
@@ -583,7 +583,7 @@ mod tests {
         assert_eq!(err, ContractError::InvalidProof);
         // Someone from the list trying to fake the amount they should get
         let info = mock_info("nois1tfg9ptr84t9zshxxf5lkvrd6ej7gxjh75lztve", &[]);
-        let msg = ExecuteMsg::Randdrop {
+        let msg = ExecuteMsg::Participate {
             amount: Uint128::new(14500000),
             proof: test_data_winner.proof.clone(),
         };
@@ -591,7 +591,7 @@ mod tests {
         assert_eq!(err, ContractError::InvalidProof {});
         // Correct account with correct amount and proof
         let info = mock_info(test_data_winner.account.as_str(), &[]);
-        let msg = ExecuteMsg::Randdrop {
+        let msg = ExecuteMsg::Participate {
             amount: test_data_winner.amount,
             proof: test_data_winner.proof.clone(),
         };
@@ -678,7 +678,7 @@ mod tests {
         // Loser decides to play
         // Correct account with correct amount and proof
         let info = mock_info(test_data_loser.account.as_str(), &[]);
-        let msg = ExecuteMsg::Randdrop {
+        let msg = ExecuteMsg::Participate {
             amount: test_data_loser.amount,
             proof: test_data_loser.proof.clone(),
         };
@@ -779,7 +779,7 @@ mod tests {
         );
         // Loser tries to play again
         let info = mock_info(test_data_loser.account.as_str(), &[]);
-        let msg = ExecuteMsg::Randdrop {
+        let msg = ExecuteMsg::Participate {
             amount: test_data_loser.amount,
             proof: test_data_loser.proof,
         };
@@ -787,7 +787,7 @@ mod tests {
         assert_eq!(err, ContractError::Claimed {});
         // Winner tries to play again
         let info = mock_info(test_data_winner.account.as_str(), &[]);
-        let msg = ExecuteMsg::Randdrop {
+        let msg = ExecuteMsg::Participate {
             amount: test_data_winner.amount,
             proof: test_data_winner.proof,
         };

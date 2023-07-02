@@ -10,6 +10,8 @@ pub struct Config {
     pub nois_proxy: NoisProxy,
     // denom of the token to randdrop
     pub randdrop_denom: String,
+    /// MerkleRoot is hex-encoded merkle root.
+    pub merkle_root: HexBinary,
 }
 
 #[cw_serde]
@@ -32,9 +34,6 @@ pub struct ParticipantData {
 
 pub const CONFIG_KEY: &str = "config";
 pub const CONFIG: Item<Config> = Item::new(CONFIG_KEY);
-
-pub const MERKLE_ROOT_PREFIX: &str = "merkle_root";
-pub const MERKLE_ROOT: Item<HexBinary> = Item::new(MERKLE_ROOT_PREFIX);
 
 pub const PARTICIPANTS_PREFIX: &str = "participants";
 /// A map that stores participant addresses. Think of this as a set.

@@ -7,12 +7,10 @@ use sha2::{Digest, Sha256};
 
 use crate::error::ContractError;
 use crate::msg::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, IsClaimedResponse, IsWinnerResponse,
-    MerkleRootResponse, QueryMsg, ResultsResponse,
+    ConfigResponse, ExecuteMsg, InstantiateMsg, IsClaimedResponse, IsWinnerResponse, QueryMsg,
+    ResultsResponse,
 };
-use crate::state::{
-    Config, NoisProxy, ParticipantData, CLAIMED, CONFIG, MERKLE_ROOT, PARTICIPANTS,
-};
+use crate::state::{Config, NoisProxy, ParticipantData, CLAIMED, CONFIG, PARTICIPANTS};
 
 /// The winning chance is 1/AIRDROP_ODDS
 const AIRDROP_ODDS: u64 = 3;
@@ -24,7 +22,10 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    let manager = deps.api.addr_validate(&msg.manager)?;
+    let manager = deps
+        .api
+        .addr_validate(&msg.manager)
+        .map_err(|_| ContractError::InvalidManagerAddress)?;
     let randdrop_denom = msg.randdrop_denom;
     let nois_proxy_address = deps
         .api
@@ -38,11 +39,16 @@ pub fn instantiate(
         address: nois_proxy_address,
         price: nois_proxy_price,
     };
+    let merkle_root = msg.merkle_root;
+    if merkle_root.len() != 32 {
+        return Err(ContractError::WrongMerkleRootLength {});
+    }
 
     let config = Config {
         manager,
         randdrop_denom,
         nois_proxy,
+        merkle_root,
     };
     CONFIG.save(deps.storage, &config)?;
 
@@ -63,6 +69,7 @@ pub fn execute(
             nois_proxy_amount,
             nois_proxy_address,
             randdrop_denom,
+            merkle_root,
         } => execute_update_config(
             deps,
             env,
@@ -72,10 +79,8 @@ pub fn execute(
             nois_proxy_denom,
             nois_proxy_amount,
             nois_proxy_address,
+            merkle_root,
         ),
-        ExecuteMsg::RegisterMerkleRoot { merkle_root } => {
-            execute_register_merkle_root(deps, env, info, merkle_root)
-        }
         // Randdrop should be called by an eligable user to start the process
         ExecuteMsg::Randdrop { amount, proof } => execute_randdrop(deps, info, amount, proof),
         // NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
@@ -89,7 +94,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     let response = match msg {
         QueryMsg::IsWinner { address } => to_binary(&query_is_winner(deps, address)?)?,
         QueryMsg::Config {} => to_binary(&query_config(deps)?)?,
-        QueryMsg::MerkleRoot {} => to_binary(&query_merkle_root(deps)?)?,
         QueryMsg::IsClaimed { address } => to_binary(&query_is_claimed(deps, address)?)?,
         QueryMsg::RanddropResults {} => to_binary(&query_results(deps)?)?,
     };
@@ -106,6 +110,7 @@ fn execute_update_config(
     nois_proxy_denom: Option<String>,
     nois_proxy_amount: Option<Uint128>,
     nois_proxy_address: Option<String>,
+    merkle_root: Option<HexBinary>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     // check the calling address is the authorised multisig
@@ -123,6 +128,16 @@ fn execute_update_config(
         None => config.nois_proxy.address,
     };
 
+    let merkle_root = match merkle_root {
+        Some(mr) => {
+            if mr.len() != 32 {
+                return Err(ContractError::WrongMerkleRootLength {});
+            }
+            mr
+        }
+        None => config.merkle_root,
+    };
+
     let nois_proxy = NoisProxy {
         price: Coin {
             denom: nois_proxy_denom,
@@ -137,6 +152,7 @@ fn execute_update_config(
             manager,
             randdrop_denom,
             nois_proxy,
+            merkle_root,
         },
     )?;
 
@@ -152,10 +168,6 @@ pub fn execute_randdrop(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
-    if !MERKLE_ROOT.exists(deps.storage) {
-        return Err(ContractError::MerkleRootAbsent);
-    }
-
     if PARTICIPANTS.has(deps.storage, &info.sender) {
         return Err(ContractError::RandomnessAlreadyRequested);
     }
@@ -167,8 +179,7 @@ pub fn execute_randdrop(
     // The contract will spend NOIS tokens on this info.sender to buy randomness.
     // To prevent spam and users abusing the funds, we only allow addresses listed on the randdrop to call this entrypoint
     // Sending the proof here will make sure that the sender is a potential randdrop winner
-    let merkle_root = MERKLE_ROOT.load(deps.storage)?; // This can be optimised by not loading the state twice
-    if !is_proof_valid(info.sender.clone(), amount, merkle_root, proof)? {
+    if !is_proof_valid(info.sender.clone(), amount, config.merkle_root, proof)? {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -225,28 +236,31 @@ pub fn execute_receive(
 
     // Make sure the participant is registered
     let participant_data = PARTICIPANTS.load(deps.storage, &participant_address)?;
-    if participant_data.nois_randomness.is_some() || participant_data.is_winner.is_some() {
-        panic!("Strange, participant's randomness already received")
-    }
+    assert!(
+        participant_data.nois_randomness.is_none(),
+        "Strange, participant's randomness already received"
+    );
+    assert!(
+        participant_data.is_winner.is_none(),
+        "Strange, participant's is_winner must not be set"
+    );
     let mut msgs = Vec::<CosmosMsg>::new();
 
-    let randdrop_amount = match is_randdrop_winner(&participant_address, randomness) {
-        true => {
-            let randdrop_amount =
-                participant_data.base_randdrop_amount * Uint128::from(AIRDROP_ODDS);
-            msgs.push(
-                BankMsg::Send {
-                    to_address: participant_address.to_string(),
-                    amount: vec![Coin {
-                        amount: randdrop_amount,
-                        denom: config.randdrop_denom.clone(),
-                    }],
-                }
-                .into(),
-            );
-            randdrop_amount
-        }
-        false => Uint128::new(0),
+    let randdrop_amount = if is_randdrop_winner(&participant_address, randomness) {
+        let randdrop_amount = participant_data.base_randdrop_amount * Uint128::from(AIRDROP_ODDS);
+        msgs.push(
+            BankMsg::Send {
+                to_address: participant_address.to_string(),
+                amount: vec![Coin {
+                    amount: randdrop_amount,
+                    denom: config.randdrop_denom.clone(),
+                }],
+            }
+            .into(),
+        );
+        randdrop_amount
+    } else {
+        Uint128::new(0)
     };
 
     // verify not claimed
@@ -333,34 +347,6 @@ fn is_randdrop_winner(participant: &Addr, randomness: [u8; 32]) -> bool {
     hash_u64 % AIRDROP_ODDS == 0
 }
 
-fn execute_register_merkle_root(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    merkle_root: HexBinary,
-) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    let current_merkle_root = MERKLE_ROOT.may_load(deps.storage)?;
-
-    // check the calling address is the authorised multisig
-    ensure_eq!(info.sender, config.manager, ContractError::Unauthorized);
-
-    if current_merkle_root.is_some() {
-        return Err(ContractError::MerkleImmutable {});
-    }
-
-    if merkle_root.len() != 32 {
-        return Err(ContractError::WrongLength {});
-    }
-
-    MERKLE_ROOT.save(deps.storage, &merkle_root)?;
-
-    Ok(Response::new().add_attributes(vec![
-        Attribute::new("action", "register_merkle_root"),
-        Attribute::new("merkle_root", merkle_root.to_string()),
-    ]))
-}
-
 fn is_proof_valid(
     address: Addr,
     amount: Uint128,
@@ -389,6 +375,11 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     let config = CONFIG.load(deps.storage)?;
     Ok(ConfigResponse {
         manager: config.manager.to_string(),
+        nois_proxy_address: config.nois_proxy.address.to_string(),
+        nois_proxy_denom: config.nois_proxy.price.denom.to_string(),
+        nois_proxy_amount: config.nois_proxy.price.amount,
+        randdrop_denom: config.randdrop_denom.to_string(),
+        merkle_root: config.merkle_root,
     })
 }
 
@@ -418,13 +409,6 @@ fn query_is_winner(deps: Deps, address: String) -> StdResult<IsWinnerResponse> {
     Ok(IsWinnerResponse { is_winner })
 }
 
-fn query_merkle_root(deps: Deps) -> StdResult<MerkleRootResponse> {
-    let merkle_root = MERKLE_ROOT.load(deps.storage)?;
-    let resp = MerkleRootResponse { merkle_root };
-
-    Ok(resp)
-}
-
 fn query_is_claimed(deps: Deps, address: String) -> StdResult<IsClaimedResponse> {
     let address = deps.api.addr_validate(&address)?;
     let is_claimed = CLAIMED.has(deps.storage, &address);
@@ -448,8 +432,11 @@ mod tests {
     const CREATOR: &str = "creator";
     const PROXY_ADDRESS: &str = "the proxy of choice";
     const MANAGER: &str = "manager1";
+    const MERKLE_ROOT: &str = "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37";
 
-    fn instantiate_contract() -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
+    fn instantiate_contract(
+        merkle_root: HexBinary,
+    ) -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
         let mut deps = mock_dependencies();
         let msg = InstantiateMsg {
             manager: MANAGER.to_string(),
@@ -459,7 +446,9 @@ mod tests {
                 "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50".to_string(),
             randdrop_denom: "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
                 .to_string(),
+            merkle_root,
         };
+
         let info = mock_info(CREATOR, &[]);
         instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         deps
@@ -467,7 +456,8 @@ mod tests {
 
     #[test]
     fn proper_instantiation() {
-        let deps = instantiate_contract();
+        let merkle_root = HexBinary::from_hex(MERKLE_ROOT).unwrap();
+        let deps = instantiate_contract(merkle_root);
         let env = mock_env();
 
         // it worked, let's query the state
@@ -476,7 +466,7 @@ mod tests {
         assert_eq!(MANAGER, config.manager.as_str());
     }
     #[test]
-    fn instantiate_fails_for_invalid_proxy_address() {
+    fn instantiate_fails_for_invalid_input() {
         let mut deps = mock_dependencies();
         let msg = InstantiateMsg {
             manager: MANAGER.to_string(),
@@ -486,6 +476,10 @@ mod tests {
                 "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50".to_string(),
             randdrop_denom: "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
                 .to_string(),
+            merkle_root: HexBinary::from_hex(
+                "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37",
+            )
+            .unwrap(),
         };
         let info = mock_info("CREATOR", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap_err();
@@ -504,6 +498,10 @@ mod tests {
                 "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50".to_string(),
             randdrop_denom: "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
                 .to_string(),
+            merkle_root: HexBinary::from_hex(
+                "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37",
+            )
+            .unwrap(),
         };
 
         let env = mock_env();
@@ -519,6 +517,12 @@ mod tests {
             nois_proxy_amount: None,
             nois_proxy_denom: None,
             randdrop_denom: Some("Bitcoin".to_string()),
+            merkle_root: Some(
+                HexBinary::from_hex(
+                    "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d38",
+                )
+                .unwrap(),
+            ),
         };
 
         let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
@@ -538,61 +542,16 @@ mod tests {
             nois_proxy_amount: None,
             nois_proxy_denom: None,
             randdrop_denom: Some("Bitcoin".to_string()),
+            merkle_root: Some(
+                HexBinary::from_hex(
+                    "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d38",
+                )
+                .unwrap(),
+            ),
         };
 
         let res = execute(deps.as_mut(), env, info, msg).unwrap_err();
         assert_eq!(res, ContractError::Unauthorized {});
-    }
-
-    #[test]
-    fn register_merkle_root() {
-        let mut deps = instantiate_contract();
-
-        // register new merkle root
-        let env = mock_env();
-        let info = mock_info(MANAGER, &[]);
-        let msg = ExecuteMsg::RegisterMerkleRoot {
-            merkle_root: HexBinary::from_hex("634de21cde").unwrap(),
-        };
-        let err = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap_err();
-        assert_eq!(err, ContractError::WrongLength {});
-        let msg = ExecuteMsg::RegisterMerkleRoot {
-            merkle_root: HexBinary::from_hex(
-                "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37",
-            )
-            .unwrap(),
-        };
-
-        let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-        assert_eq!(
-            res.attributes,
-            vec![
-                Attribute::new("action", "register_merkle_root"),
-                Attribute::new(
-                    "merkle_root",
-                    "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37"
-                )
-            ]
-        );
-
-        let res = query(deps.as_ref(), env, QueryMsg::MerkleRoot {}).unwrap();
-        let merkle_root: MerkleRootResponse = from_binary(&res).unwrap();
-        assert_eq!(
-            HexBinary::from_hex("634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37")
-                .unwrap(),
-            merkle_root.merkle_root
-        );
-        // registering a new merkle root should fail
-        let env = mock_env();
-        let info = mock_info(MANAGER, &[]);
-        let msg = ExecuteMsg::RegisterMerkleRoot {
-            merkle_root: HexBinary::from_hex(
-                "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37",
-            )
-            .unwrap(),
-        };
-        let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
-        assert_eq!(err, ContractError::MerkleImmutable {});
     }
 
     const TEST_DATA_WINNER: &[u8] = include_bytes!("../tests/winner.json");
@@ -608,16 +567,11 @@ mod tests {
 
     #[test]
     fn participate_in_randdrop_and_claim_process_works() {
-        let mut deps = instantiate_contract();
         let test_data_winner: Encoded = from_slice(TEST_DATA_WINNER).unwrap();
         let test_data_loser: Encoded = from_slice(TEST_DATA_LOSER).unwrap();
+        let mut deps = instantiate_contract(test_data_winner.root);
 
         let env = mock_env();
-        let info = mock_info(MANAGER, &[]);
-        let msg = ExecuteMsg::RegisterMerkleRoot {
-            merkle_root: test_data_winner.root,
-        };
-        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
         // Someone not from the randdrop list tries to participate
         let info = mock_info("Some-random-person-not-on-the-list", &[]);

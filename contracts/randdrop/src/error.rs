@@ -17,11 +17,8 @@ pub enum ContractError {
     #[error("Proxy address is not valid")]
     InvalidProxyAddress,
 
-    #[error("Merkle is immutable.")]
-    MerkleImmutable,
-
-    #[error("Register the Merkle root before requesting randomness")]
-    MerkleRootAbsent,
+    #[error("Manager address is not valid")]
+    InvalidManagerAddress,
 
     #[error("Invalid input")]
     InvalidInput {},
@@ -29,8 +26,8 @@ pub enum ContractError {
     #[error("Already claimed")]
     Claimed {},
 
-    #[error("Wrong length")]
-    WrongLength {},
+    #[error("Wrong Merkle root length")]
+    WrongMerkleRootLength {},
 
     #[error("Verification failed")]
     VerificationFailed {},

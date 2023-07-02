@@ -14,6 +14,8 @@ pub struct InstantiateMsg {
     pub nois_proxy_amount: Uint128,
     /// Randdrop denom
     pub randdrop_denom: String,
+    /// MerkleRoot is hex-encoded merkle root.
+    pub merkle_root: HexBinary,
 }
 
 #[cw_serde]
@@ -24,10 +26,7 @@ pub enum ExecuteMsg {
         nois_proxy_amount: Option<Uint128>,
         nois_proxy_address: Option<String>,
         randdrop_denom: Option<String>,
-    },
-    RegisterMerkleRoot {
-        /// MerkleRoot is hex-encoded merkle root.
-        merkle_root: HexBinary,
+        merkle_root: Option<HexBinary>,
     },
     // This will trigger fetching the unpredictable random beacon
     Randdrop {
@@ -55,8 +54,6 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(ConfigResponse)]
     Config {},
-    #[returns(MerkleRootResponse)]
-    MerkleRoot {},
     #[returns(IsClaimedResponse)]
     IsClaimed { address: String },
     // An address that is lucky only means that the Nois randomness hashed with the address gives a good match
@@ -70,7 +67,18 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct ConfigResponse {
+    /// manager if none set to info.sender.
     pub manager: String,
+    /// Address of the Nois proxy contract
+    pub nois_proxy_address: String,
+    /// Nois proxy prices denom
+    pub nois_proxy_denom: String,
+    /// Nois proxy prices amount
+    pub nois_proxy_amount: Uint128,
+    /// Randdrop denom
+    pub randdrop_denom: String,
+    /// MerkleRoot is hex-encoded merkle root.
+    pub merkle_root: HexBinary,
 }
 
 #[cw_serde]
@@ -81,12 +89,6 @@ pub struct ResultsResponse {
 #[cw_serde]
 pub struct IsWinnerResponse {
     pub is_winner: Option<bool>,
-}
-
-#[cw_serde]
-pub struct MerkleRootResponse {
-    /// MerkleRoot is hex-encoded merkle root.
-    pub merkle_root: HexBinary,
 }
 
 #[cw_serde]

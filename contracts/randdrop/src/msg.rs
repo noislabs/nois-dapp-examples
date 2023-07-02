@@ -1,8 +1,6 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{HexBinary, Uint128};
+use cosmwasm_std::{HexBinary, Timestamp, Uint128};
 use nois::NoisCallback;
-
-use crate::state::ParticipantData;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -105,7 +103,27 @@ pub struct HasClaimedResponse {
 #[cw_serde]
 pub struct ParticipantResponse {
     // None means not a participant
-    pub participant: Option<ParticipantData>,
+    pub participant: Option<ParticipantDataResponse>,
+}
+
+#[cw_serde]
+pub struct ParticipantDataResponse {
+    // The randomness beacon received from the proxy
+    pub nois_randomness: Option<HexBinary>,
+    // amount provided during proof
+    pub base_randdrop_amount: Uint128,
+    // true if the participant won
+    pub is_winner: Option<bool>,
+    // true if the randdrop is claimed
+    pub has_claimed: bool,
+    // amount that the paricipate claimed, could be 0 if participant didn't win
+    pub amount_claimed: Option<Uint128>,
+    // The begin participation time
+    pub participate_time: Timestamp,
+    // The randdrop claiming time
+    pub claim_time: Option<Timestamp>,
+    // randdrop duration end to end. participate_time - claim_time
+    pub randdrop_duration: Option<Timestamp>,
 }
 
 #[cw_serde]

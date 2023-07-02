@@ -25,21 +25,17 @@ pub struct NoisProxy {
 #[cw_serde]
 pub struct ParticipantData {
     // The randomness beacon received from the proxy
-    pub nois_randomness: Option<[u8; 32]>,
+    pub nois_randomness: Option<HexBinary>,
     // amount provided during proof
     pub base_randdrop_amount: Uint128,
     // true if the participant won
     pub is_winner: Option<bool>,
-    // true if the randdrop is claimed
-    pub has_claimed: bool,
     // amount that the paricipate claimed, could be 0 if participant didn't win
     pub amount_claimed: Option<Uint128>,
     // The begin participation time
     pub participate_time: Timestamp,
     // The randdrop claiming time
     pub claim_time: Option<Timestamp>,
-    // randdrop duration end to end. participate_time - claim_time
-    pub randdrop_duration: Option<Timestamp>,
 }
 
 pub const CONFIG_KEY: &str = "config";

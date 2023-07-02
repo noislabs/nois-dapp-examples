@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::error::ContractError;
 use crate::msg::{
     ConfigResponse, ExecuteMsg, HasClaimedResponse, InstantiateMsg, IsWinnerResponse,
-    ParticipantResponse, QueryMsg, ResultsResponse,
+    ParticipantDataResponse, ParticipantResponse, QueryMsg, ResultsResponse,
 };
 use crate::state::{Config, NoisProxy, ParticipantData, CONFIG, PARTICIPANTS};
 
@@ -201,11 +201,9 @@ pub fn execute_randdrop(
         nois_randomness: None,
         base_randdrop_amount: amount,
         is_winner: None,
-        has_claimed: false,
         amount_claimed: None,
         participate_time: env.block.time,
         claim_time: None,
-        randdrop_duration: None,
     };
     PARTICIPANTS.save(deps.storage, &info.sender, participant_data)?;
 
@@ -250,7 +248,7 @@ pub fn execute_receive(
         "Strange, participant's is_winner must not be set"
     );
     assert!(
-        !participant_data.has_claimed,
+        participant_data.amount_claimed.is_none(),
         "Strange, participant's randdrop already claimed"
     );
     let mut msgs = Vec::<CosmosMsg>::new();
@@ -276,18 +274,12 @@ pub fn execute_receive(
 
     // Update Participant Data
     let new_participant_data = ParticipantData {
-        nois_randomness: Some(randomness),
-        has_claimed: true,
+        nois_randomness: Some(randomness.into()),
         amount_claimed: participant_data.amount_claimed,
         base_randdrop_amount: participant_data.base_randdrop_amount,
         claim_time: Some(env.block.time),
         is_winner: participant_data.is_winner,
         participate_time: participant_data.participate_time,
-        randdrop_duration: Some(
-            env.block
-                .time
-                .minus_nanos(participant_data.participate_time.nanos()),
-        ),
     };
     PARTICIPANTS.save(deps.storage, &participant_address, &new_participant_data)?;
 
@@ -405,7 +397,7 @@ fn query_results(deps: Deps) -> StdResult<ResultsResponse> {
     // This could fail when many people have claimed because we might run out of gas.
     let results = PARTICIPANTS
         .range(deps.storage, None, None, Order::Ascending)
-        .filter(|participant| participant.as_ref().unwrap().1.has_claimed)
+        .filter(|participant| participant.as_ref().unwrap().1.amount_claimed.is_some())
         .map(|result| {
             let (address, paticipant_data) = result.unwrap();
             (
@@ -434,7 +426,7 @@ fn query_has_claimed(deps: Deps, address: String) -> StdResult<HasClaimedRespons
     let address = deps.api.addr_validate(&address)?;
     let has_claimed = PARTICIPANTS
         .may_load(deps.storage, &address)?
-        .map(|pd| pd.has_claimed);
+        .map(|pd| pd.amount_claimed.is_some());
     let resp = HasClaimedResponse { has_claimed };
 
     Ok(resp)
@@ -443,7 +435,34 @@ fn query_has_claimed(deps: Deps, address: String) -> StdResult<HasClaimedRespons
 fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantResponse> {
     let address = deps.api.addr_validate(&address)?;
     let participant = PARTICIPANTS.may_load(deps.storage, &address)?;
-    let resp = ParticipantResponse { participant };
+    let resp = match participant {
+        Some(prt) => ParticipantResponse {
+            participant: Some(ParticipantDataResponse {
+                base_randdrop_amount: prt.base_randdrop_amount,
+                nois_randomness: prt.nois_randomness,
+                randdrop_duration: if prt.claim_time.is_some() {
+                    Some(
+                        prt.claim_time
+                            .unwrap()
+                            .minus_nanos(prt.participate_time.nanos()),
+                    )
+                } else {
+                    None
+                },
+                is_winner: prt.is_winner,
+                has_claimed: prt.amount_claimed.is_some(),
+                amount_claimed: prt.amount_claimed,
+                participate_time: prt.participate_time,
+                claim_time: if prt.claim_time.is_some() {
+                    Some(prt.claim_time.unwrap())
+                } else {
+                    None
+                },
+            }),
+        },
+
+        None => ParticipantResponse { participant: None },
+    };
 
     Ok(resp)
 }
@@ -727,7 +746,7 @@ mod tests {
             )
             .unwrap(),
             ParticipantResponse {
-                participant: Some(ParticipantData {
+                participant: Some(ParticipantDataResponse {
                     nois_randomness: None,
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: None,
@@ -847,12 +866,13 @@ mod tests {
             )
             .unwrap(),
             ParticipantResponse {
-                participant: Some(ParticipantData {
-                    nois_randomness: Some([
-                        170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170,
-                        170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170,
-                        161, 41
-                    ]),
+                participant: Some(ParticipantDataResponse {
+                    nois_randomness: Some(
+                        HexBinary::from_hex(
+                            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa129",
+                        )
+                        .unwrap()
+                    ),
                     base_randdrop_amount: Uint128::new(4500000),
                     is_winner: Some(true),
                     has_claimed: true,
@@ -877,12 +897,13 @@ mod tests {
             )
             .unwrap(),
             ParticipantResponse {
-                participant: Some(ParticipantData {
-                    nois_randomness: Some([
-                        170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170,
-                        170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170,
-                        161, 41
-                    ]),
+                participant: Some(ParticipantDataResponse {
+                    nois_randomness: Some(
+                        HexBinary::from_hex(
+                            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa129",
+                        )
+                        .unwrap()
+                    ),
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: Some(false),
                     has_claimed: true,

@@ -31,7 +31,7 @@ nois = "0.7.0"
 
 cosmwasm-std = "1.2.3"
 cosmwasm-schema = "1.2.3"
-cw-storage-plus = "1.0.0"
+cw-storage-plus = "1.1.0"
 cw2 = "1.0.0"
 schemars = "0.8.8"
 serde = { version = "1.0.137", default-features = false, features = ["derive"] }

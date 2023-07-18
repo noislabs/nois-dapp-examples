@@ -116,8 +116,9 @@ pub struct ParticipantDataResponse {
     pub is_winner: Option<bool>,
     // true if the randdrop is claimed
     pub has_claimed: bool,
-    // amount that the paricipate claimed, could be 0 if participant didn't win
-    pub amount_claimed: Option<Uint128>,
+    // Amount that the paricipate won. This is None until the ranomness arrives. After
+    // that it is always set to a value > 0 for winners of 0 for non-winners.
+    pub winning_amount: Option<Uint128>,
     // The begin participation time
     pub participate_time: Timestamp,
     // The randdrop claiming time

@@ -201,7 +201,7 @@ pub fn execute_randdrop(
         nois_randomness: None,
         base_randdrop_amount: amount,
         is_winner: None,
-        amount_claimed: None,
+        winning_amount: None,
         participate_time: env.block.time,
         claim_time: None,
     };
@@ -248,12 +248,12 @@ pub fn execute_receive(
         "Strange, participant's is_winner must not be set"
     );
     assert!(
-        participant_data.amount_claimed.is_none(),
-        "Strange, participant's randdrop already claimed"
+        participant_data.winning_amount.is_none(),
+        "Strange, participant's winning_amount is already set"
     );
     let mut msgs = Vec::<CosmosMsg>::new();
 
-    participant_data.amount_claimed = if is_randdrop_winner(&participant_address, randomness) {
+    let winning_amount = if is_randdrop_winner(&participant_address, randomness) {
         participant_data.is_winner = Some(true);
         let randdrop_amount = participant_data.base_randdrop_amount * Uint128::from(AIRDROP_ODDS);
         msgs.push(
@@ -266,16 +266,16 @@ pub fn execute_receive(
             }
             .into(),
         );
-        Some(randdrop_amount)
+        randdrop_amount
     } else {
         participant_data.is_winner = Some(false);
-        Some(Uint128::new(0))
+        Uint128::zero()
     };
 
     // Update Participant Data
     let new_participant_data = ParticipantData {
         nois_randomness: Some(randomness.into()),
-        amount_claimed: participant_data.amount_claimed,
+        winning_amount: Some(winning_amount),
         base_randdrop_amount: participant_data.base_randdrop_amount,
         claim_time: Some(env.block.time),
         is_winner: participant_data.is_winner,
@@ -291,13 +291,13 @@ pub fn execute_receive(
         Attribute::new("is_winner", participant_data.is_winner.unwrap().to_string()),
         Attribute::new("merkle_amount", participant_data.base_randdrop_amount), // value from the merkle tree
         Attribute::new(
-            "send_amount",
+            "winning_amount",
             Coin {
-                amount: participant_data.amount_claimed.unwrap(),
+                amount: winning_amount,
                 denom: config.randdrop_denom,
             }
             .to_string(),
-        ), // actual send amount
+        ), // actual sent amount
     ]))
 }
 
@@ -397,12 +397,12 @@ fn query_results(deps: Deps) -> StdResult<ResultsResponse> {
     // This could fail when many people have claimed because we might run out of gas.
     let results = PARTICIPANTS
         .range(deps.storage, None, None, Order::Ascending)
-        .filter(|participant| participant.as_ref().unwrap().1.amount_claimed.is_some())
+        .filter(|participant| participant.as_ref().unwrap().1.winning_amount.is_some())
         .map(|result| {
             let (address, paticipant_data) = result.unwrap();
             (
                 address.into_string(),
-                paticipant_data.amount_claimed.unwrap(),
+                paticipant_data.winning_amount.unwrap(),
             )
         })
         .collect();
@@ -426,7 +426,7 @@ fn query_has_claimed(deps: Deps, address: String) -> StdResult<HasClaimedRespons
     let address = deps.api.addr_validate(&address)?;
     let has_claimed = PARTICIPANTS
         .may_load(deps.storage, &address)?
-        .map(|pd| pd.amount_claimed.is_some());
+        .map(|pd| pd.winning_amount.is_some());
     let resp = HasClaimedResponse { has_claimed };
 
     Ok(resp)
@@ -446,8 +446,8 @@ fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantRespon
                     None
                 },
                 is_winner: prt.is_winner,
-                has_claimed: prt.amount_claimed.is_some(),
-                amount_claimed: prt.amount_claimed,
+                has_claimed: prt.winning_amount.is_some(),
+                winning_amount: prt.winning_amount,
                 participate_time: prt.participate_time,
                 claim_time: if prt.claim_time.is_some() {
                     Some(prt.claim_time.unwrap())
@@ -669,7 +669,7 @@ mod tests {
                 Attribute::new("is_winner", true.to_string()),
                 Attribute::new("merkle_amount", 4500000.to_string()),
                 Attribute::new(
-                    "send_amount",
+                    "winning_amount",
                     "13500000ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
                         .to_string()
                 ),
@@ -747,7 +747,7 @@ mod tests {
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: None,
                     has_claimed: false,
-                    amount_claimed: None,
+                    winning_amount: None,
                     participate_time: Timestamp::from_nanos(1571797419879305533),
                     claim_time: None,
                     randdrop_duration: None,
@@ -783,7 +783,7 @@ mod tests {
                 Attribute::new("is_winner", false.to_string()),
                 Attribute::new("merkle_amount", 5869.to_string()),
                 Attribute::new(
-                    "send_amount",
+                    "winning_amount",
                     "0ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
                         .to_string()
                 ),
@@ -874,7 +874,7 @@ mod tests {
                     base_randdrop_amount: Uint128::new(4500000),
                     is_winner: Some(true),
                     has_claimed: true,
-                    amount_claimed: Some(Uint128::new(13500000)),
+                    winning_amount: Some(Uint128::new(13500000)),
                     participate_time: Timestamp::from_nanos(1571797419879305533),
                     claim_time: Some(Timestamp::from_nanos(1571797419879305533)),
                     randdrop_duration: Some(0),
@@ -905,7 +905,7 @@ mod tests {
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: Some(false),
                     has_claimed: true,
-                    amount_claimed: Some(Uint128::new(0)),
+                    winning_amount: Some(Uint128::new(0)),
                     participate_time: Timestamp::from_nanos(1571797419879305533),
                     claim_time: Some(Timestamp::from_nanos(1571797464990527866)),
                     randdrop_duration: Some(45),

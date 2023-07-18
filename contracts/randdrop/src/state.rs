@@ -12,6 +12,8 @@ pub struct Config {
     pub randdrop_denom: String,
     /// MerkleRoot is hex-encoded merkle root.
     pub merkle_root: HexBinary,
+    /// If test_mode is set the state of participant_data can be reset
+    pub test_mode: Option<bool>,
 }
 
 #[cw_serde]

@@ -45,6 +45,9 @@ pub enum ContractError {
     #[error("Invalid Proof")]
     InvalidProof,
 
+    #[error("Contract is not in test mode")]
+    ContractIsNotInTestMode,
+
     #[error("The sender address has already requested randomness and maybe received the result")]
     UserAlreadyParticipated,
 }

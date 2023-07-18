@@ -83,7 +83,7 @@ pub fn execute(
         ),
         // Randdrop should be called by an eligable user to start the process
         ExecuteMsg::Participate { amount, proof } => {
-            execute_randdrop(deps, env, info, amount, proof)
+            execute_participate(deps, env, info, amount, proof)
         }
         // NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),
@@ -162,7 +162,7 @@ fn execute_update_config(
 }
 
 // This function will call the proxy and ask for the randomness round
-pub fn execute_randdrop(
+pub fn execute_participate(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,

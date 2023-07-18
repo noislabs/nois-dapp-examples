@@ -4,7 +4,7 @@ use nois::NoisCallback;
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    /// manager if none set to info.sender.
+    /// The manager address. This address can update the config and withdraw funds.
     pub manager: String,
     /// Address of the Nois proxy contract
     pub nois_proxy_address: String,
@@ -68,7 +68,7 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct ConfigResponse {
-    /// manager if none set to info.sender.
+    /// The manager address. This address can update the config and withdraw funds.
     pub manager: String,
     /// Address of the Nois proxy contract
     pub nois_proxy_address: String,

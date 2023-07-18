@@ -1,4 +1,3 @@
-use hex::FromHexError;
 use thiserror::Error;
 
 use cosmwasm_std::{StdError, Timestamp};
@@ -7,9 +6,6 @@ use cosmwasm_std::{StdError, Timestamp};
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
-
-    #[error("{0}")]
-    Hex(#[from] FromHexError),
 
     #[error("Unauthorized.")]
     Unauthorized,

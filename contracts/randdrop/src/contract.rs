@@ -170,7 +170,7 @@ fn execute_update_config(
 
 fn execute_reset(deps: DepsMut) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    // check the calling address is the authorised multisig
+    // check the test_mode is set and true
     ensure!(
         config.test_mode.is_some() && config.test_mode.unwrap(),
         ContractError::ContractIsNotInTestMode

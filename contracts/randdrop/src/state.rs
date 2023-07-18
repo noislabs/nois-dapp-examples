@@ -40,6 +40,5 @@ pub struct ParticipantData {
 pub const CONFIG_KEY: &str = "config";
 pub const CONFIG: Item<Config> = Item::new(CONFIG_KEY);
 
-pub const PARTICIPANTS_PREFIX: &str = "participants";
-/// A map that stores participant addresses. Think of this as a set.
-pub const PARTICIPANTS: Map<&Addr, ParticipantData> = Map::new(PARTICIPANTS_PREFIX);
+/// A map that stores participant addresses and their randdrop state.
+pub const PARTICIPANTS: Map<&Addr, ParticipantData> = Map::new("p");

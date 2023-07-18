@@ -91,6 +91,8 @@ pub struct ResultsResponse {
 
 #[cw_serde]
 pub struct IsWinnerResponse {
+    /// This is None as long as we have no result.
+    /// Some(true) means the participant won and Some(false) means the participant did not win.
     pub is_winner: Option<bool>,
 }
 

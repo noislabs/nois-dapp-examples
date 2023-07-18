@@ -28,8 +28,6 @@ pub struct ParticipantData {
     pub nois_randomness: Option<HexBinary>,
     // amount provided during proof
     pub base_randdrop_amount: Uint128,
-    // true if the participant won
-    pub is_winner: Option<bool>,
     // Amount that the paricipate won. This is None until the ranomness arrives. After
     // that it is always set to a value > 0 for winners of 0 for non-winners.
     pub winning_amount: Option<Uint128>,

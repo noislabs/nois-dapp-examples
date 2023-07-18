@@ -200,7 +200,6 @@ pub fn execute_randdrop(
     let participant_data = &ParticipantData {
         nois_randomness: None,
         base_randdrop_amount: amount,
-        is_winner: None,
         winning_amount: None,
         participate_time: env.block.time,
         claim_time: None,
@@ -238,14 +237,10 @@ pub fn execute_receive(
     let participant_address = deps.api.addr_validate(participant_address)?;
 
     // Make sure the participant is registered
-    let mut participant_data = PARTICIPANTS.load(deps.storage, &participant_address)?;
+    let participant_data = PARTICIPANTS.load(deps.storage, &participant_address)?;
     assert!(
         participant_data.nois_randomness.is_none(),
         "Strange, participant's randomness already received"
-    );
-    assert!(
-        participant_data.is_winner.is_none(),
-        "Strange, participant's is_winner must not be set"
     );
     assert!(
         participant_data.winning_amount.is_none(),
@@ -254,7 +249,6 @@ pub fn execute_receive(
     let mut msgs = Vec::<CosmosMsg>::new();
 
     let winning_amount = if is_randdrop_winner(&participant_address, randomness) {
-        participant_data.is_winner = Some(true);
         let randdrop_amount = participant_data.base_randdrop_amount * Uint128::from(AIRDROP_ODDS);
         msgs.push(
             BankMsg::Send {
@@ -268,7 +262,6 @@ pub fn execute_receive(
         );
         randdrop_amount
     } else {
-        participant_data.is_winner = Some(false);
         Uint128::zero()
     };
 
@@ -278,7 +271,6 @@ pub fn execute_receive(
         winning_amount: Some(winning_amount),
         base_randdrop_amount: participant_data.base_randdrop_amount,
         claim_time: Some(env.block.time),
-        is_winner: participant_data.is_winner,
         participate_time: participant_data.participate_time,
     };
     PARTICIPANTS.save(deps.storage, &participant_address, &new_participant_data)?;
@@ -288,7 +280,7 @@ pub fn execute_receive(
         Attribute::new("address", info.sender),
         Attribute::new("job_id", job_id),
         Attribute::new("participant", participant_address),
-        Attribute::new("is_winner", participant_data.is_winner.unwrap().to_string()),
+        Attribute::new("is_winner", (!winning_amount.is_zero()).to_string()),
         Attribute::new("merkle_amount", participant_data.base_randdrop_amount), // value from the merkle tree
         Attribute::new(
             "winning_amount",
@@ -413,8 +405,8 @@ fn query_is_winner(deps: Deps, address: String) -> StdResult<IsWinnerResponse> {
     let address = deps.api.addr_validate(address.as_str())?;
     // Check if the address is lucky to be randomly selected for the randdrop
     let is_winner = match PARTICIPANTS.may_load(deps.storage, &address)? {
-        Some(pd) => match pd.is_winner {
-            Some(_) => pd.is_winner,
+        Some(pd) => match pd.winning_amount {
+            Some(winning_amount) => Some(!winning_amount.is_zero()),
             None => None,
         },
         None => None,
@@ -445,7 +437,7 @@ fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantRespon
                 } else {
                     None
                 },
-                is_winner: prt.is_winner,
+                is_winner: prt.winning_amount.map(|wa| !wa.is_zero()),
                 has_claimed: prt.winning_amount.is_some(),
                 winning_amount: prt.winning_amount,
                 participate_time: prt.participate_time,

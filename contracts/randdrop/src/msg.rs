@@ -4,7 +4,7 @@ use nois::NoisCallback;
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    /// manager if none set to info.sender.
+    /// The manager address. This address can update the config and withdraw funds.
     pub manager: String,
     /// Address of the Nois proxy contract
     pub nois_proxy_address: String,
@@ -68,7 +68,7 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct ConfigResponse {
-    /// manager if none set to info.sender.
+    /// The manager address. This address can update the config and withdraw funds.
     pub manager: String,
     /// Address of the Nois proxy contract
     pub nois_proxy_address: String,
@@ -103,7 +103,7 @@ pub struct ParticipantResponse {
 #[cw_serde]
 pub struct ParticipantDataResponse {
     // The randomness beacon received from the proxy
-    pub nois_randomness: Option<HexBinary>,
+    pub randomness: Option<HexBinary>,
     // amount provided during proof
     pub base_randdrop_amount: Uint128,
     // true if the participant won
@@ -117,10 +117,4 @@ pub struct ParticipantDataResponse {
     pub claim_time: Option<Timestamp>,
     // End to end Randdrop duration (participate_time - claim_time) in seconds.
     pub randdrop_duration: Option<u64>,
-}
-
-#[cw_serde]
-pub struct QueriedRanddropResult {
-    pub participant: String,
-    pub amount: Uint128,
 }

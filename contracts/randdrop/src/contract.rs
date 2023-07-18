@@ -83,7 +83,7 @@ pub fn execute(
         ),
         // Randdrop should be called by an eligable user to start the process
         ExecuteMsg::Participate { amount, proof } => {
-            execute_randdrop(deps, env, info, amount, proof)
+            execute_participate(deps, env, info, amount, proof)
         }
         // NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),
@@ -162,7 +162,7 @@ fn execute_update_config(
 }
 
 // This function will call the proxy and ask for the randomness round
-pub fn execute_randdrop(
+pub fn execute_participate(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -178,7 +178,7 @@ pub fn execute_randdrop(
     // The contract will spend NOIS tokens on this info.sender to buy randomness.
     // To prevent spam and users abusing the funds, we only allow addresses listed on the randdrop to call this entrypoint
     // Sending the proof here will make sure that the sender is a potential randdrop winner
-    if !is_proof_valid(info.sender.clone(), amount, config.merkle_root, proof)? {
+    if !is_proof_valid(&info.sender, amount, config.merkle_root, proof)? {
         return Err(ContractError::InvalidProof {});
     }
 
@@ -197,7 +197,7 @@ pub fn execute_randdrop(
 
     // Register randdrop participant
     let participant_data = &ParticipantData {
-        nois_randomness: None,
+        randomness: None,
         base_randdrop_amount: amount,
         winning_amount: None,
         participate_time: env.block.time,
@@ -238,7 +238,7 @@ pub fn execute_receive(
     // Make sure the participant is registered
     let participant_data = PARTICIPANTS.load(deps.storage, &participant_address)?;
     assert!(
-        participant_data.nois_randomness.is_none(),
+        participant_data.randomness.is_none(),
         "Strange, participant's randomness already received"
     );
     assert!(
@@ -266,7 +266,7 @@ pub fn execute_receive(
 
     // Update Participant Data
     let new_participant_data = ParticipantData {
-        nois_randomness: Some(randomness.into()),
+        randomness: Some(randomness.into()),
         winning_amount: Some(winning_amount),
         base_randdrop_amount: participant_data.base_randdrop_amount,
         claim_time: Some(env.block.time),
@@ -348,7 +348,7 @@ fn is_randdrop_winner(participant: &Addr, randomness: [u8; 32]) -> bool {
 }
 
 fn is_proof_valid(
-    address: Addr,
+    address: &Addr,
     amount: Uint128,
     merkle_root: HexBinary,
     proof: Vec<HexBinary>,
@@ -374,11 +374,11 @@ fn is_proof_valid(
 fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     let config = CONFIG.load(deps.storage)?;
     Ok(ConfigResponse {
-        manager: config.manager.to_string(),
-        nois_proxy_address: config.nois_proxy.address.to_string(),
-        nois_proxy_denom: config.nois_proxy.price.denom.to_string(),
+        manager: config.manager.into(),
+        nois_proxy_address: config.nois_proxy.address.into(),
+        nois_proxy_denom: config.nois_proxy.price.denom,
         nois_proxy_amount: config.nois_proxy.price.amount,
-        randdrop_denom: config.randdrop_denom.to_string(),
+        randdrop_denom: config.randdrop_denom,
         merkle_root: config.merkle_root,
     })
 }
@@ -388,9 +388,9 @@ fn query_results(deps: Deps) -> StdResult<ResultsResponse> {
     // This could fail when many people have participated because we might run out of gas.
     let results = PARTICIPANTS
         .range(deps.storage, None, None, Order::Ascending)
-        .filter(|participant| participant.as_ref().unwrap().1.winning_amount.is_some())
-        .map(|result| {
-            let (address, paticipant_data) = result.unwrap();
+        .map(|participant| participant.unwrap())
+        .filter(|participant| participant.1.winning_amount.is_some())
+        .map(|(address, paticipant_data)| {
             (
                 address.into_string(),
                 paticipant_data.winning_amount.unwrap(),
@@ -419,7 +419,7 @@ fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantRespon
         Some(prt) => ParticipantResponse {
             participant: Some(ParticipantDataResponse {
                 base_randdrop_amount: prt.base_randdrop_amount,
-                nois_randomness: prt.nois_randomness,
+                randomness: prt.randomness,
                 randdrop_duration: if let Some(claim_time) = prt.claim_time {
                     Some(claim_time.seconds() - prt.participate_time.seconds())
                 } else {
@@ -726,7 +726,7 @@ mod tests {
             .unwrap(),
             ParticipantResponse {
                 participant: Some(ParticipantDataResponse {
-                    nois_randomness: None,
+                    randomness: None,
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: None,
                     winning_amount: None,
@@ -850,7 +850,7 @@ mod tests {
             .unwrap(),
             ParticipantResponse {
                 participant: Some(ParticipantDataResponse {
-                    nois_randomness: Some(
+                    randomness: Some(
                         HexBinary::from_hex(
                             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa129",
                         )
@@ -880,7 +880,7 @@ mod tests {
             .unwrap(),
             ParticipantResponse {
                 participant: Some(ParticipantDataResponse {
-                    nois_randomness: Some(
+                    randomness: Some(
                         HexBinary::from_hex(
                             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa129",
                         )

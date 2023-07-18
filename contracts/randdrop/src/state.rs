@@ -25,7 +25,7 @@ pub struct NoisProxy {
 #[cw_serde]
 pub struct ParticipantData {
     // The randomness beacon received from the proxy
-    pub nois_randomness: Option<HexBinary>,
+    pub randomness: Option<HexBinary>,
     // amount provided during proof
     pub base_randdrop_amount: Uint128,
     // Amount that the paricipate won. This is None until the ranomness arrives. After
@@ -40,6 +40,5 @@ pub struct ParticipantData {
 pub const CONFIG_KEY: &str = "config";
 pub const CONFIG: Item<Config> = Item::new(CONFIG_KEY);
 
-pub const PARTICIPANTS_PREFIX: &str = "participants";
-/// A map that stores participant addresses. Think of this as a set.
-pub const PARTICIPANTS: Map<&Addr, ParticipantData> = Map::new(PARTICIPANTS_PREFIX);
+/// A map that stores participant addresses and their randdrop state.
+pub const PARTICIPANTS: Map<&Addr, ParticipantData> = Map::new("p");

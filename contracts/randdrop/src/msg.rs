@@ -122,8 +122,8 @@ pub struct ParticipantDataResponse {
     pub participate_time: Timestamp,
     // The randdrop claiming time
     pub claim_time: Option<Timestamp>,
-    // randdrop duration end to end. participate_time - claim_time
-    pub randdrop_duration: Option<Timestamp>,
+    // End to end Randdrop duration (participate_time - claim_time) in seconds.
+    pub randdrop_duration: Option<u64>,
 }
 
 #[cw_serde]

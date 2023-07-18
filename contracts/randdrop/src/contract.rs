@@ -440,12 +440,8 @@ fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantRespon
             participant: Some(ParticipantDataResponse {
                 base_randdrop_amount: prt.base_randdrop_amount,
                 nois_randomness: prt.nois_randomness,
-                randdrop_duration: if prt.claim_time.is_some() {
-                    Some(
-                        prt.claim_time
-                            .unwrap()
-                            .minus_nanos(prt.participate_time.nanos()),
-                    )
+                randdrop_duration: if let Some(claim_time) = prt.claim_time {
+                    Some(claim_time.seconds() - prt.participate_time.seconds())
                 } else {
                     None
                 },
@@ -737,7 +733,7 @@ mod tests {
             from_binary::<ParticipantResponse>(
                 &query(
                     deps.as_ref(),
-                    env.clone(),
+                    env,
                     QueryMsg::Participant {
                         address: "nois1svvyq5hwf6syvn6mklsxsm0ly7jvtla90q7gfs".to_string()
                     }
@@ -771,7 +767,9 @@ mod tests {
             },
         };
         let info = mock_info(PROXY_ADDRESS, &[]);
-        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        let mut env = mock_env();
+        env.block.time = env.block.time.plus_nanos(45_111_222_333);
+        let res = execute(deps.as_mut(), env, info, msg).unwrap();
         assert_eq!(
             res.attributes,
             vec![
@@ -796,7 +794,7 @@ mod tests {
         assert!(from_binary::<HasClaimedResponse>(
             &query(
                 deps.as_ref(),
-                env,
+                mock_env(),
                 QueryMsg::HasClaimed {
                     address: test_data_loser.account.clone()
                 }
@@ -879,7 +877,7 @@ mod tests {
                     amount_claimed: Some(Uint128::new(13500000)),
                     participate_time: Timestamp::from_nanos(1571797419879305533),
                     claim_time: Some(Timestamp::from_nanos(1571797419879305533)),
-                    randdrop_duration: Some(Timestamp::from_nanos(0)),
+                    randdrop_duration: Some(0),
                 })
             }
         );
@@ -909,8 +907,8 @@ mod tests {
                     has_claimed: true,
                     amount_claimed: Some(Uint128::new(0)),
                     participate_time: Timestamp::from_nanos(1571797419879305533),
-                    claim_time: Some(Timestamp::from_nanos(1571797419879305533)),
-                    randdrop_duration: Some(Timestamp::from_nanos(0)),
+                    claim_time: Some(Timestamp::from_nanos(1571797464990527866)),
+                    randdrop_duration: Some(45),
                 })
             }
         );

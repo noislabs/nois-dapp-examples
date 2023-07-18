@@ -404,10 +404,9 @@ fn query_is_winner(deps: Deps, address: String) -> StdResult<IsWinnerResponse> {
     let address = deps.api.addr_validate(address.as_str())?;
     // Check if the address is lucky to be randomly selected for the randdrop
     let is_winner = match PARTICIPANTS.may_load(deps.storage, &address)? {
-        Some(pd) => match pd.winning_amount {
-            Some(winning_amount) => Some(!winning_amount.is_zero()),
-            None => None,
-        },
+        Some(pd) => pd
+            .winning_amount
+            .map(|winning_amount| !winning_amount.is_zero()),
         None => None,
     };
     Ok(IsWinnerResponse { is_winner })

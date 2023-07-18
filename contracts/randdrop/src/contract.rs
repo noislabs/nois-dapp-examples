@@ -178,7 +178,7 @@ pub fn execute_participate(
     // The contract will spend NOIS tokens on this info.sender to buy randomness.
     // To prevent spam and users abusing the funds, we only allow addresses listed on the randdrop to call this entrypoint
     // Sending the proof here will make sure that the sender is a potential randdrop winner
-    if !is_proof_valid(info.sender.clone(), amount, config.merkle_root, proof)? {
+    if !is_proof_valid(&info.sender, amount, config.merkle_root, proof)? {
         return Err(ContractError::InvalidProof {});
     }
 
@@ -348,7 +348,7 @@ fn is_randdrop_winner(participant: &Addr, randomness: [u8; 32]) -> bool {
 }
 
 fn is_proof_valid(
-    address: Addr,
+    address: &Addr,
     amount: Uint128,
     merkle_root: HexBinary,
     proof: Vec<HexBinary>,

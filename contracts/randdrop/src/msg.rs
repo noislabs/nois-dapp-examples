@@ -118,9 +118,3 @@ pub struct ParticipantDataResponse {
     // End to end Randdrop duration (participate_time - claim_time) in seconds.
     pub randdrop_duration: Option<u64>,
 }
-
-#[cw_serde]
-pub struct QueriedRanddropResult {
-    pub participant: String,
-    pub amount: Uint128,
-}

@@ -27,7 +27,7 @@ workflows:
 jobs:
   contract_double_dice_roll:
     docker:
-      - image: rust:1.63.0
+      - image: rust:1.69.0
     working_directory: ~/project/contracts/double-dice-roll
     steps:
       - checkout:
@@ -37,8 +37,8 @@ jobs:
           command: rustc --version; cargo --version; rustup --version
       - restore_cache:
           keys:
-            - v2-double-dice-roll-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
-            - v2-double-dice-roll-rust:1.63.0-
+            - v2-double-dice-roll-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
+            - v2-double-dice-roll-rust:1.69.0-
       - run:
           name: Unit Tests
           environment:
@@ -51,11 +51,11 @@ jobs:
           paths:
             - /usr/local/cargo/registry
             - target
-          key: v2-double-dice-roll-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
+          key: v2-double-dice-roll-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
 
   contract_randdrop:
     docker:
-      - image: rust:1.63.0
+      - image: rust:1.69.0
     working_directory: ~/project/contracts/randdrop
     steps:
       - checkout:
@@ -65,8 +65,8 @@ jobs:
           command: rustc --version; cargo --version; rustup --version
       - restore_cache:
           keys:
-            - v2-randdrop-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
-            - v2-randdrop-rust:1.63.0-
+            - v2-randdrop-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
+            - v2-randdrop-rust:1.69.0-
       - run:
           name: Unit Tests
           environment:
@@ -79,11 +79,11 @@ jobs:
           paths:
             - /usr/local/cargo/registry
             - target
-          key: v2-randdrop-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
+          key: v2-randdrop-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
 
   contract_randdrop-global:
     docker:
-      - image: rust:1.63.0
+      - image: rust:1.69.0
     working_directory: ~/project/contracts/randdrop-global
     steps:
       - checkout:
@@ -93,8 +93,8 @@ jobs:
           command: rustc --version; cargo --version; rustup --version
       - restore_cache:
           keys:
-            - v2-randdrop-global-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
-            - v2-randdrop-global-rust:1.63.0-
+            - v2-randdrop-global-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
+            - v2-randdrop-global-rust:1.69.0-
       - run:
           name: Unit Tests
           environment:
@@ -107,11 +107,11 @@ jobs:
           paths:
             - /usr/local/cargo/registry
             - target
-          key: v2-randdrop-global-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
+          key: v2-randdrop-global-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
 
   lint:
     docker:
-      - image: rust:1.63.0
+      - image: rust:1.69.0
     steps:
       - checkout
       - run:
@@ -119,8 +119,8 @@ jobs:
           command: rustc --version; cargo --version; rustup --version; rustup target list --installed
       - restore_cache:
           keys:
-            - v2-lint-rust:1.63.0-{{ checksum "Cargo.lock" }}
-            - v2-lint-rust:1.63.0-
+            - v2-lint-rust:1.69.0-{{ checksum "Cargo.lock" }}
+            - v2-lint-rust:1.69.0-
       - run:
           name: Add rustfmt component
           command: rustup component add rustfmt
@@ -139,7 +139,7 @@ jobs:
             - target/debug/.fingerprint
             - target/debug/build
             - target/debug/deps
-          key: v2-lint-rust:1.63.0-{{ checksum "Cargo.lock" }}
+          key: v2-lint-rust:1.69.0-{{ checksum "Cargo.lock" }}
 
   # This runs one time on the top level to ensure all contracts compile properly into wasm.
   # We don't run the wasm build per contract build, and then reuse a lot of the same dependencies, so this speeds up CI time
@@ -147,7 +147,7 @@ jobs:
   # Resulting wasm files are stored to the workspace, so they can be used by the integration test downstream
   wasm-build:
     docker:
-      - image: rust:1.63.0
+      - image: rust:1.69.0
     steps:
       - checkout:
           path: ~/project
@@ -156,8 +156,8 @@ jobs:
           command: rustc --version; cargo --version; rustup --version
       - restore_cache:
           keys:
-            - v2-wasm-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
-            - v2-wasm-rust:1.63.0-
+            - v2-wasm-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
+            - v2-wasm-rust:1.69.0-
       - run:
           name: Add wasm32 target
           command: rustup target add wasm32-unknown-unknown
@@ -173,7 +173,7 @@ jobs:
           paths:
             - /usr/local/cargo/registry
             - target
-          key: v2-wasm-rust:1.63.0-{{ checksum "~/project/Cargo.lock" }}
+          key: v2-wasm-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
       - persist_to_workspace:
           name: Save wasm contracts for integration test usage
           root: ./target/wasm32-unknown-unknown/release
@@ -207,7 +207,7 @@ jobs:
       - run:
           name: Build development contracts
           command: |
-            docker run --volumes-from with_code cosmwasm/workspace-optimizer:0.12.7
+            docker run --volumes-from with_code cosmwasm/workspace-optimizer:0.13.0
             docker cp with_code:/code/artifacts ./artifacts
       - run:
           name: Show data
@@ -229,7 +229,7 @@ jobs:
 
   build_and_upload_schemas:
     docker:
-      - image: rust:1.63.0
+      - image: rust:1.69.0
     working_directory: ~/project
     steps:
       - checkout:

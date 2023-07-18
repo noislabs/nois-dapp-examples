@@ -103,7 +103,7 @@ pub struct ParticipantResponse {
 #[cw_serde]
 pub struct ParticipantDataResponse {
     // The randomness beacon received from the proxy
-    pub nois_randomness: Option<HexBinary>,
+    pub randomness: Option<HexBinary>,
     // amount provided during proof
     pub base_randdrop_amount: Uint128,
     // true if the participant won

@@ -25,7 +25,7 @@ pub struct NoisProxy {
 #[cw_serde]
 pub struct ParticipantData {
     // The randomness beacon received from the proxy
-    pub nois_randomness: Option<HexBinary>,
+    pub randomness: Option<HexBinary>,
     // amount provided during proof
     pub base_randdrop_amount: Uint128,
     // Amount that the paricipate won. This is None until the ranomness arrives. After

@@ -197,7 +197,7 @@ pub fn execute_randdrop(
 
     // Register randdrop participant
     let participant_data = &ParticipantData {
-        nois_randomness: None,
+        randomness: None,
         base_randdrop_amount: amount,
         winning_amount: None,
         participate_time: env.block.time,
@@ -238,7 +238,7 @@ pub fn execute_receive(
     // Make sure the participant is registered
     let participant_data = PARTICIPANTS.load(deps.storage, &participant_address)?;
     assert!(
-        participant_data.nois_randomness.is_none(),
+        participant_data.randomness.is_none(),
         "Strange, participant's randomness already received"
     );
     assert!(
@@ -266,7 +266,7 @@ pub fn execute_receive(
 
     // Update Participant Data
     let new_participant_data = ParticipantData {
-        nois_randomness: Some(randomness.into()),
+        randomness: Some(randomness.into()),
         winning_amount: Some(winning_amount),
         base_randdrop_amount: participant_data.base_randdrop_amount,
         claim_time: Some(env.block.time),
@@ -419,7 +419,7 @@ fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantRespon
         Some(prt) => ParticipantResponse {
             participant: Some(ParticipantDataResponse {
                 base_randdrop_amount: prt.base_randdrop_amount,
-                nois_randomness: prt.nois_randomness,
+                randomness: prt.randomness,
                 randdrop_duration: if let Some(claim_time) = prt.claim_time {
                     Some(claim_time.seconds() - prt.participate_time.seconds())
                 } else {
@@ -726,7 +726,7 @@ mod tests {
             .unwrap(),
             ParticipantResponse {
                 participant: Some(ParticipantDataResponse {
-                    nois_randomness: None,
+                    randomness: None,
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: None,
                     winning_amount: None,
@@ -850,7 +850,7 @@ mod tests {
             .unwrap(),
             ParticipantResponse {
                 participant: Some(ParticipantDataResponse {
-                    nois_randomness: Some(
+                    randomness: Some(
                         HexBinary::from_hex(
                             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa129",
                         )
@@ -880,7 +880,7 @@ mod tests {
             .unwrap(),
             ParticipantResponse {
                 participant: Some(ParticipantDataResponse {
-                    nois_randomness: Some(
+                    randomness: Some(
                         HexBinary::from_hex(
                             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa129",
                         )

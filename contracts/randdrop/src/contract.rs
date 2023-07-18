@@ -374,11 +374,11 @@ fn is_proof_valid(
 fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     let config = CONFIG.load(deps.storage)?;
     Ok(ConfigResponse {
-        manager: config.manager.to_string(),
-        nois_proxy_address: config.nois_proxy.address.to_string(),
-        nois_proxy_denom: config.nois_proxy.price.denom.to_string(),
+        manager: config.manager.into(),
+        nois_proxy_address: config.nois_proxy.address.into(),
+        nois_proxy_denom: config.nois_proxy.price.denom,
         nois_proxy_amount: config.nois_proxy.price.amount,
-        randdrop_denom: config.randdrop_denom.to_string(),
+        randdrop_denom: config.randdrop_denom,
         merkle_root: config.merkle_root,
     })
 }

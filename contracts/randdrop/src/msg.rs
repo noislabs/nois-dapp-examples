@@ -54,8 +54,6 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     #[returns(ConfigResponse)]
     Config {},
-    #[returns(HasClaimedResponse)]
-    HasClaimed { address: String },
     // An address that is lucky only means that the Nois randomness hashed with the address gives a good match
     // It does not mean that the address was eligible at the first place for the randdrop as there is no way for the contract to check eligibility just by looking at the address.
     #[returns(IsWinnerResponse)]
@@ -91,13 +89,9 @@ pub struct ResultsResponse {
 
 #[cw_serde]
 pub struct IsWinnerResponse {
+    /// This is None as long as we have no result.
+    /// Some(true) means the participant won and Some(false) means the participant did not win.
     pub is_winner: Option<bool>,
-}
-
-#[cw_serde]
-pub struct HasClaimedResponse {
-    // None means not a participant
-    pub has_claimed: Option<bool>,
 }
 
 #[cw_serde]
@@ -114,10 +108,9 @@ pub struct ParticipantDataResponse {
     pub base_randdrop_amount: Uint128,
     // true if the participant won
     pub is_winner: Option<bool>,
-    // true if the randdrop is claimed
-    pub has_claimed: bool,
-    // amount that the paricipate claimed, could be 0 if participant didn't win
-    pub amount_claimed: Option<Uint128>,
+    // Amount that the paricipate won. This is None until the ranomness arrives. After
+    // that it is always set to a value > 0 for winners of 0 for non-winners.
+    pub winning_amount: Option<Uint128>,
     // The begin participation time
     pub participate_time: Timestamp,
     // The randdrop claiming time

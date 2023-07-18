@@ -23,9 +23,6 @@ pub enum ContractError {
     #[error("Invalid input")]
     InvalidInput {},
 
-    #[error("Already claimed")]
-    Claimed {},
-
     #[error("Wrong Merkle root length")]
     WrongMerkleRootLength {},
 

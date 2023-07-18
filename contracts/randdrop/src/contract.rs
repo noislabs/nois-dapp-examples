@@ -7,8 +7,8 @@ use sha2::{Digest, Sha256};
 
 use crate::error::ContractError;
 use crate::msg::{
-    ConfigResponse, ExecuteMsg, HasClaimedResponse, InstantiateMsg, IsWinnerResponse,
-    ParticipantDataResponse, ParticipantResponse, QueryMsg, ResultsResponse,
+    ConfigResponse, ExecuteMsg, InstantiateMsg, IsWinnerResponse, ParticipantDataResponse,
+    ParticipantResponse, QueryMsg, ResultsResponse,
 };
 use crate::state::{Config, NoisProxy, ParticipantData, CONFIG, PARTICIPANTS};
 
@@ -96,7 +96,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     let response = match msg {
         QueryMsg::IsWinner { address } => to_binary(&query_is_winner(deps, address)?)?,
         QueryMsg::Config {} => to_binary(&query_config(deps)?)?,
-        QueryMsg::HasClaimed { address } => to_binary(&query_has_claimed(deps, address)?)?,
         QueryMsg::RanddropResults {} => to_binary(&query_results(deps)?)?,
         QueryMsg::Participant { address } => to_binary(&query_participant(deps, address)?)?,
     };
@@ -386,7 +385,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
 
 fn query_results(deps: Deps) -> StdResult<ResultsResponse> {
     // No pagination here yet 🤷‍♂️
-    // This could fail when many people have claimed because we might run out of gas.
+    // This could fail when many people have participated because we might run out of gas.
     let results = PARTICIPANTS
         .range(deps.storage, None, None, Order::Ascending)
         .filter(|participant| participant.as_ref().unwrap().1.winning_amount.is_some())
@@ -414,16 +413,6 @@ fn query_is_winner(deps: Deps, address: String) -> StdResult<IsWinnerResponse> {
     Ok(IsWinnerResponse { is_winner })
 }
 
-fn query_has_claimed(deps: Deps, address: String) -> StdResult<HasClaimedResponse> {
-    let address = deps.api.addr_validate(&address)?;
-    let has_claimed = PARTICIPANTS
-        .may_load(deps.storage, &address)?
-        .map(|pd| pd.winning_amount.is_some());
-    let resp = HasClaimedResponse { has_claimed };
-
-    Ok(resp)
-}
-
 fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantResponse> {
     let address = deps.api.addr_validate(&address)?;
     let participant = PARTICIPANTS.may_load(deps.storage, &address)?;
@@ -438,7 +427,6 @@ fn query_participant(deps: Deps, address: String) -> StdResult<ParticipantRespon
                     None
                 },
                 is_winner: prt.winning_amount.map(|wa| !wa.is_zero()),
-                has_claimed: prt.winning_amount.is_some(),
                 winning_amount: prt.winning_amount,
                 participate_time: prt.participate_time,
                 claim_time: if prt.claim_time.is_some() {
@@ -676,19 +664,23 @@ mod tests {
             }],
         });
         assert_eq!(res.messages, vec![expected]);
-        assert!(from_binary::<HasClaimedResponse>(
-            &query(
-                deps.as_ref(),
-                env.clone(),
-                QueryMsg::HasClaimed {
-                    address: test_data_winner.account.clone()
-                }
+
+        // Once the randomness came in, is_winner is set to Some
+        assert_eq!(
+            from_binary::<IsWinnerResponse>(
+                &query(
+                    deps.as_ref(),
+                    env.clone(),
+                    QueryMsg::IsWinner {
+                        address: test_data_winner.account.clone()
+                    }
+                )
+                .unwrap()
             )
             .unwrap()
-        )
-        .unwrap()
-        .has_claimed
-        .unwrap());
+            .is_winner,
+            Some(true)
+        );
 
         // Loser's turn
         // Loser fears losing so tries not to play and somehow get the proxy to send some randomness on his behalf
@@ -738,7 +730,6 @@ mod tests {
                     nois_randomness: None,
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: None,
-                    has_claimed: false,
                     winning_amount: None,
                     participate_time: Timestamp::from_nanos(1571797419879305533),
                     claim_time: None,
@@ -762,6 +753,7 @@ mod tests {
         let mut env = mock_env();
         env.block.time = env.block.time.plus_nanos(45_111_222_333);
         let res = execute(deps.as_mut(), env, info, msg).unwrap();
+        assert_eq!(res.messages, vec![]);
         assert_eq!(
             res.attributes,
             vec![
@@ -782,20 +774,22 @@ mod tests {
             ]
         );
 
-        assert_eq!(res.messages, vec![]);
-        assert!(from_binary::<HasClaimedResponse>(
-            &query(
-                deps.as_ref(),
-                mock_env(),
-                QueryMsg::HasClaimed {
-                    address: test_data_loser.account.clone()
-                }
+        // Once the randomness came in, is_winner is set to Some
+        assert_eq!(
+            from_binary::<IsWinnerResponse>(
+                &query(
+                    deps.as_ref(),
+                    mock_env(),
+                    QueryMsg::IsWinner {
+                        address: test_data_loser.account.clone()
+                    }
+                )
+                .unwrap()
             )
             .unwrap()
-        )
-        .unwrap()
-        .has_claimed
-        .unwrap());
+            .is_winner,
+            Some(false)
+        );
 
         // Stop aridrop and Widhdraw funds
         let env = mock_env();
@@ -865,7 +859,6 @@ mod tests {
                     ),
                     base_randdrop_amount: Uint128::new(4500000),
                     is_winner: Some(true),
-                    has_claimed: true,
                     winning_amount: Some(Uint128::new(13500000)),
                     participate_time: Timestamp::from_nanos(1571797419879305533),
                     claim_time: Some(Timestamp::from_nanos(1571797419879305533)),
@@ -896,7 +889,6 @@ mod tests {
                     ),
                     base_randdrop_amount: Uint128::new(5869),
                     is_winner: Some(false),
-                    has_claimed: true,
                     winning_amount: Some(Uint128::new(0)),
                     participate_time: Timestamp::from_nanos(1571797419879305533),
                     claim_time: Some(Timestamp::from_nanos(1571797464990527866)),

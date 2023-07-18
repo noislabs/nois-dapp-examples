@@ -388,9 +388,9 @@ fn query_results(deps: Deps) -> StdResult<ResultsResponse> {
     // This could fail when many people have participated because we might run out of gas.
     let results = PARTICIPANTS
         .range(deps.storage, None, None, Order::Ascending)
-        .filter(|participant| participant.as_ref().unwrap().1.winning_amount.is_some())
-        .map(|result| {
-            let (address, paticipant_data) = result.unwrap();
+        .map(|participant| participant.unwrap())
+        .filter(|participant| participant.1.winning_amount.is_some())
+        .map(|(address, paticipant_data)| {
             (
                 address.into_string(),
                 paticipant_data.winning_amount.unwrap(),

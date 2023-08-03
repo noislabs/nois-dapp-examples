@@ -7,7 +7,7 @@ workflows:
       - contract_double_dice_roll
       - contract_randdrop
       - contract_randdrop-global
-      - lotto
+      - contract_lotto
       - lint
       - wasm-build
   deploy:

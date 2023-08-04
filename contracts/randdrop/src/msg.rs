@@ -16,6 +16,8 @@ pub struct InstantiateMsg {
     pub randdrop_denom: String,
     /// MerkleRoot is hex-encoded merkle root.
     pub merkle_root: HexBinary,
+    /// If test_mode is set the state of participant_data can be reset
+    pub test_mode: Option<bool>,
 }
 
 #[cw_serde]
@@ -27,6 +29,7 @@ pub enum ExecuteMsg {
         nois_proxy_address: Option<String>,
         randdrop_denom: Option<String>,
         merkle_root: Option<HexBinary>,
+        test_mode: Option<bool>,
     },
     // This will trigger fetching the unpredictable random beacon
     Participate {
@@ -47,6 +50,7 @@ pub enum ExecuteMsg {
     WithdrawAll {
         address: String,
     },
+    Reset {},
 }
 
 #[cw_serde]

@@ -1,6 +1,7 @@
 use cosmwasm_std::{
-    ensure_eq, entry_point, to_binary, Addr, Attribute, BankMsg, Coin, CosmosMsg, Deps, DepsMut,
-    Env, HexBinary, MessageInfo, Order, QueryResponse, Response, StdResult, Uint128, WasmMsg,
+    ensure, ensure_eq, entry_point, to_binary, Addr, Attribute, BankMsg, Coin, CosmosMsg, Deps,
+    DepsMut, Env, HexBinary, MessageInfo, Order, QueryResponse, Response, StdResult, Uint128,
+    WasmMsg,
 };
 use nois::{NoisCallback, ProxyExecuteMsg};
 use sha2::{Digest, Sha256};
@@ -49,6 +50,7 @@ pub fn instantiate(
         randdrop_denom,
         nois_proxy,
         merkle_root,
+        test_mode: msg.test_mode,
     };
     CONFIG.save(deps.storage, &config)?;
 
@@ -70,6 +72,7 @@ pub fn execute(
             nois_proxy_address,
             randdrop_denom,
             merkle_root,
+            test_mode,
         } => execute_update_config(
             deps,
             env,
@@ -80,6 +83,7 @@ pub fn execute(
             nois_proxy_amount,
             nois_proxy_address,
             merkle_root,
+            test_mode,
         ),
         // Randdrop should be called by an eligable user to start the process
         ExecuteMsg::Participate { amount, proof } => {
@@ -88,6 +92,7 @@ pub fn execute(
         // NoisReceive should be called by the proxy contract. The proxy is forwarding the randomness from the nois chain to this contract.
         ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),
         ExecuteMsg::WithdrawAll { address } => execute_withdraw_all(deps, env, info, address),
+        ExecuteMsg::Reset {} => execute_reset(deps),
     }
 }
 
@@ -113,6 +118,7 @@ fn execute_update_config(
     nois_proxy_amount: Option<Uint128>,
     nois_proxy_address: Option<String>,
     merkle_root: Option<HexBinary>,
+    test_mode: Option<bool>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     // check the calling address is the authorised multisig
@@ -155,10 +161,23 @@ fn execute_update_config(
             randdrop_denom,
             nois_proxy,
             merkle_root,
+            test_mode,
         },
     )?;
 
     Ok(Response::new().add_attribute("action", "update_config"))
+}
+
+fn execute_reset(deps: DepsMut) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    // check the test_mode is set and true
+    ensure!(
+        config.test_mode.is_some() && config.test_mode.unwrap(),
+        ContractError::ContractIsNotInTestMode
+    );
+    PARTICIPANTS.clear(deps.storage);
+
+    Ok(Response::new().add_attribute("action", "reset"))
 }
 
 // This function will call the proxy and ask for the randomness round
@@ -472,6 +491,7 @@ mod tests {
             randdrop_denom: "ibc/717352A5277F3DE916E8FD6B87F4CA6A51F2FBA9CF04ABCFF2DF7202F8A8BC50"
                 .to_string(),
             merkle_root,
+            test_mode: None,
         };
 
         let info = mock_info(CREATOR, &[]);
@@ -505,6 +525,7 @@ mod tests {
                 "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37",
             )
             .unwrap(),
+            test_mode: None,
         };
         let info = mock_info("CREATOR", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap_err();
@@ -527,6 +548,7 @@ mod tests {
                 "634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37",
             )
             .unwrap(),
+            test_mode: None,
         };
 
         let env = mock_env();
@@ -548,6 +570,7 @@ mod tests {
                 )
                 .unwrap(),
             ),
+            test_mode: None,
         };
 
         let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
@@ -573,6 +596,7 @@ mod tests {
                 )
                 .unwrap(),
             ),
+            test_mode: None,
         };
 
         let res = execute(deps.as_mut(), env, info, msg).unwrap_err();
@@ -588,6 +612,16 @@ mod tests {
         amount: Uint128,
         root: HexBinary,
         proof: Vec<HexBinary>,
+    }
+
+    #[test]
+    fn reset_not_allowed_when_not_set() {
+        let test_data_winner: Encoded = from_slice(TEST_DATA_WINNER).unwrap();
+        let mut deps = instantiate_contract(test_data_winner.root);
+        let info = mock_info("Someone", &[]);
+        let msg = ExecuteMsg::Reset {};
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::ContractIsNotInTestMode);
     }
 
     #[test]

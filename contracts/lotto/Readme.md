@@ -4,9 +4,9 @@ Lotto is a platform that enables lottery creator to easily create their lotterie
 
 ## Lotto agents:
 
-- Manager: Sets the community pool address and sets the protocol and creator comissions. The manger can also withdraw the protocol rewards.
-- Creator: The creator creates lotteries and gets to specify the duration, the token and price of a ticket, number of winners, and the commission cut that goes to the community pool
-- Player: Plays on one or many lotteries
+- Manager - Permissioned: Sets the community pool address and sets the protocol and creator comissions. The manger can also withdraw the protocol rewards.
+- Creator - Permissionless : The creator creates lotteries and gets to specify the duration, the token and price of a ticket, number of winners, and the commission cut that goes to the community pool
+- Player - Permissionless: Plays on one or many lotteries
 
 ## Contract Flow
 

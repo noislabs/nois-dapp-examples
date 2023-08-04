@@ -112,7 +112,7 @@ jobs:
 
   contract_lotto:
     docker:
-      - image: rust:1.69.0
+      - image: rust:1.71.0
     working_directory: ~/project/contracts/lotto
     steps:
       - checkout:
@@ -122,8 +122,8 @@ jobs:
           command: rustc --version; cargo --version; rustup --version
       - restore_cache:
           keys:
-            - v2-lotto-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
-            - v2-lotto-rust:1.69.0-
+            - v2-lotto-rust:1.71.0-{{ checksum "~/project/Cargo.lock" }}
+            - v2-lotto-rust:1.71.0-
       - run:
           name: Unit Tests
           environment:
@@ -136,7 +136,7 @@ jobs:
           paths:
             - /usr/local/cargo/registry
             - target
-          key: v2-lotto-rust:1.69.0-{{ checksum "~/project/Cargo.lock" }}
+          key: v2-lotto-rust:1.71.0-{{ checksum "~/project/Cargo.lock" }}
 
   lint:
     docker:

@@ -6,12 +6,13 @@ use nois::NoisCallback;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub manager: String,
-    pub community_pool: String,
     pub nois_proxy: String,
     // commission that will stay in the contract
     pub protocol_commission_percent: u32,
     // commission that will got to the creator of the lotto
     pub creator_commission_percent: u32,
+    // list of addresses that lottos can fund from a cut on wins. like addresses for public goods or community pools
+    pub recipients_list: Vec<String>,
 }
 
 #[cw_serde]
@@ -21,17 +22,22 @@ pub enum ExecuteMsg {
         ticket_price: Coin,
         duration_seconds: u64,
         number_of_winners: u32,
-        community_pool_percentage: u32,
+        // list of allowlisted addresses that can receive a share of the total prize
+        recipients_list: Vec<(String, u32)>,
     },
     // TODO Kais, Update Config
     SetConfig {
         nois_proxy: Option<String>,
         manager: Option<String>,
         lotto_nonce: Option<u64>,
-        community_pool: Option<String>,
+        recipients_list: Option<Vec<String>>,
         protocol_commission_percent: Option<u32>,
         creator_commission_percent: Option<u32>,
         is_paused: Option<bool>,
+    },
+    UpdateAllowlistedRecipients {
+        add: Vec<String>,
+        remove: Vec<String>,
     },
     BuyTicket {
         lotto_id: u64,
@@ -104,7 +110,7 @@ pub struct LottoResponse {
     pub winners: Option<Vec<String>>,
     pub creator: String,
     pub number_of_winners: u32,
-    pub community_pool_percentage: u32,
+    pub recipients_list: Vec<(String, u32)>,
 }
 #[cw_serde]
 pub struct LottosResponse {

@@ -16,6 +16,15 @@ pub enum ContractError {
     #[error("Invalid Amount: {val:?}")]
     InvalidAmount { val: String },
 
+    #[error("Address: {addr:?} not allowlisted")]
+    AddressNotAllowListed { addr: String },
+
+    #[error("trying lotto duration of {desired_duration:?} seconds which is hihgher than {max_duration:?} seconds")]
+    MaxDurationExceeded {
+        max_duration: u64,
+        desired_duration: u64,
+    },
+
     #[error("No Funds Provided")]
     NoFundsProvided,
 

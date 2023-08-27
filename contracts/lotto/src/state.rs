@@ -8,7 +8,7 @@ pub struct Config {
     // Only the manager is able to withdraw funds from the contract
     pub manager: Addr,
     pub lotto_nonce: u64,
-    pub community_pool: Addr,
+    pub allowlisted_recipients: Vec<Addr>,
     // commission that will stay in the contract
     pub protocol_commission_percent: u32,
     // commission that will got to the creator of the lotto
@@ -39,7 +39,7 @@ pub struct Lotto {
     // How many winners will share the lotto prize
     pub number_of_winners: u32,
     // Community pool percentage
-    pub community_pool_percentage: u32,
+    pub recipients_list: Vec<(Addr, u32)>,
 }
 
 pub const CONFIG_KEY: &str = "config";

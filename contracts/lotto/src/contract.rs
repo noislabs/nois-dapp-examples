@@ -5,7 +5,7 @@ use crate::msg::{
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure_eq, to_binary, Attribute, BankMsg, Coin, Deps, DepsMut, Env, MessageInfo, Order,
+    ensure_eq, to_binary, Addr, Attribute, BankMsg, Coin, Deps, DepsMut, Env, MessageInfo, Order,
     QueryResponse, Response, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::Bound;
@@ -22,6 +22,8 @@ const CONTRACT_NAME: &str = "crates.io:lotto";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 */
 
+const MAX_LOTTO_DURATION: u64 = 2_592_000; // 30 days
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -34,10 +36,15 @@ pub fn instantiate(
         .api
         .addr_validate(msg.manager.as_str())
         .map_err(|_| ContractError::InvalidAddress {})?;
-    let community_pool = deps
-        .api
-        .addr_validate(msg.community_pool.as_str())
-        .map_err(|_| ContractError::InvalidAddress {})?;
+
+    let mut allowlisted_recipients: Vec<Addr> = vec![];
+
+    // Verify that all the addresses in recipients_list are valid
+    for recipient in msg.recipients_list {
+        let recipient_addr = deps.api.addr_validate(&recipient)?;
+
+        allowlisted_recipients.push(recipient_addr);
+    }
 
     let proxy = deps
         .api
@@ -54,7 +61,7 @@ pub fn instantiate(
         manager: addr,
         lotto_nonce: 0,
         nois_proxy: proxy,
-        community_pool,
+        allowlisted_recipients,
         protocol_commission_percent,
         creator_commission_percent,
         is_paused: false,
@@ -79,7 +86,7 @@ pub fn execute(
             ticket_price,
             duration_seconds,
             number_of_winners,
-            community_pool_percentage,
+            recipients_list,
         } => execute_create_lotto(
             deps,
             env,
@@ -87,15 +94,18 @@ pub fn execute(
             ticket_price,
             duration_seconds,
             number_of_winners,
-            community_pool_percentage,
+            recipients_list,
         ),
+        ExecuteMsg::UpdateAllowlistedRecipients { add, remove } => {
+            execute_update_allow_listed_recipients(deps, info, add, remove)
+        }
         ExecuteMsg::BuyTicket { lotto_id } => execute_buy_ticket(deps, env, info, lotto_id),
         ExecuteMsg::NoisReceive { callback } => execute_receive(deps, env, info, callback),
         ExecuteMsg::SetConfig {
             nois_proxy,
             manager,
             lotto_nonce,
-            community_pool,
+            recipients_list,
             protocol_commission_percent,
             creator_commission_percent,
             is_paused,
@@ -105,7 +115,7 @@ pub fn execute(
             nois_proxy,
             manager,
             lotto_nonce,
-            community_pool,
+            recipients_list,
             protocol_commission_percent,
             creator_commission_percent,
             is_paused,
@@ -123,7 +133,7 @@ fn execute_create_lotto(
     ticket_price: Coin,
     duration_seconds: u64,
     number_of_winners: u32,
-    community_pool_percentage: u32,
+    recipients_list: Vec<(String, u32)>,
 ) -> Result<Response, ContractError> {
     // validate Timestamp
     let mut config = CONFIG.load(deps.storage)?;
@@ -133,15 +143,34 @@ fn execute_create_lotto(
         return Err(ContractError::ContractIsPaused {});
     };
 
-    let expiration = env.block.time.plus_seconds(duration_seconds);
-
-    if config.protocol_commission_percent
-        + config.creator_commission_percent
-        + community_pool_percentage
-        >= 100
-    {
+    let mut allowlisted_recipients_total_percentage = 0;
+    let mut verified_recipients_list: Vec<(Addr, u32)> = vec![];
+    // Verify that all the addresses in recipients_list are valid
+    for recipient in recipients_list {
+        let recipient_addr = deps.api.addr_validate(&recipient.0)?;
+        // Ensure all the addresses in receipient_list are already registered in the contract
+        if !config.allowlisted_recipients.contains(&recipient_addr) {
+            return Err(ContractError::AddressNotAllowListed {
+                addr: recipient_addr.to_string(),
+            });
+        }
+        allowlisted_recipients_total_percentage += recipient.1;
+        verified_recipients_list.push((recipient_addr, recipient.1));
+    }
+    // Verify that the percentages on recipients_list is not greater than 100
+    if allowlisted_recipients_total_percentage > 100 {
         return Err(ContractError::IncorrectRates {});
     }
+
+    // Check that duration_seconds is inferior to MAX_LOTTO_DURATION
+    if duration_seconds > MAX_LOTTO_DURATION {
+        return Err(ContractError::MaxDurationExceeded {
+            max_duration: MAX_LOTTO_DURATION,
+            desired_duration: duration_seconds,
+        });
+    }
+
+    let expiration = env.block.time.plus_seconds(duration_seconds);
 
     let lotto = Lotto {
         nonce,
@@ -152,7 +181,7 @@ fn execute_create_lotto(
         winners: None,
         creator: info.sender,
         number_of_winners,
-        community_pool_percentage,
+        recipients_list: verified_recipients_list,
     };
 
     LOTTOS.save(deps.storage, nonce, &lotto)?;
@@ -200,13 +229,27 @@ fn execute_set_config(
     nois_proxy: Option<String>,
     manager: Option<String>,
     lotto_nonce: Option<u64>,
-    community_pool: Option<String>,
+    recipients_list: Option<Vec<String>>,
     protocol_commission_percent: Option<u32>,
     creator_commission_percent: Option<u32>,
     is_paused: Option<bool>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     ensure_eq!(info.sender, config.manager, ContractError::Unauthorized);
+
+    let mut allowlisted_recipients: Vec<Addr> = vec![];
+
+    if let Some(r) = recipients_list {
+        // Verify that all the addresses in recipients_list are valid
+
+        for recipient in r {
+            let recipient_addr = deps.api.addr_validate(&recipient)?;
+
+            allowlisted_recipients.push(recipient_addr);
+        }
+    } else {
+        allowlisted_recipients = config.allowlisted_recipients;
+    }
 
     let manager = match manager {
         Some(ma) => deps.api.addr_validate(&ma)?,
@@ -216,10 +259,7 @@ fn execute_set_config(
         Some(np) => deps.api.addr_validate(&np)?,
         None => config.nois_proxy,
     };
-    let community_pool = match community_pool {
-        Some(cp) => deps.api.addr_validate(&cp)?,
-        None => config.community_pool,
-    };
+
     let lotto_nonce = lotto_nonce.unwrap_or(config.lotto_nonce);
     let protocol_commission_percent =
         protocol_commission_percent.unwrap_or(config.protocol_commission_percent);
@@ -234,13 +274,47 @@ fn execute_set_config(
         manager,
         nois_proxy,
         lotto_nonce,
-        community_pool,
+        allowlisted_recipients,
         protocol_commission_percent,
         creator_commission_percent,
         is_paused,
     };
 
     CONFIG.save(deps.storage, &new_config)?;
+
+    Ok(Response::default().add_attribute("action", "set_config"))
+}
+
+fn execute_update_allow_listed_recipients(
+    deps: DepsMut,
+    info: MessageInfo,
+    add: Vec<String>,
+    remove: Vec<String>,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    ensure_eq!(info.sender, config.manager, ContractError::Unauthorized);
+
+    let mut updated_allowlist = Vec::new();
+
+    // Add new addresses to the allowlist
+    for recipient in add {
+        let addr = deps.api.addr_validate(&recipient)?;
+        if !config.allowlisted_recipients.contains(&addr) {
+            updated_allowlist.push(addr);
+        }
+    }
+
+    // Remove addresses from the allowlist
+    for recipient in &config.allowlisted_recipients {
+        let recipient_addr = deps.api.addr_validate(recipient.as_str())?;
+        if !remove.contains(&recipient_addr.to_string()) {
+            updated_allowlist.push(recipient_addr);
+        }
+    }
+
+    config.allowlisted_recipients = updated_allowlist;
+
+    CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::default().add_attribute("action", "set_config"))
 }
@@ -332,9 +406,17 @@ pub fn execute_receive(
 
     let amount_creator = get_percentage(lotto.balance, config.creator_commission_percent);
     let amount_protocol = get_percentage(lotto.balance, config.protocol_commission_percent);
-    let amount_community_pool = get_percentage(lotto.balance, lotto.community_pool_percentage);
+    let winnable_amount = lotto.balance - amount_creator - amount_protocol;
 
-    let prize_amount = lotto.balance - (amount_protocol + amount_creator + amount_community_pool);
+    let mut recipients_list_amounts: Vec<(Addr, Uint128)> = vec![];
+    let mut recipients_list_amounts_total: Uint128 = Uint128::new(0);
+    for recipient in lotto.recipients_list.clone() {
+        let recipient_amount = get_percentage(winnable_amount, recipient.1);
+        recipients_list_amounts.push((recipient.0, recipient_amount));
+        recipients_list_amounts_total += recipient_amount;
+    }
+
+    let prize_amount = winnable_amount - recipients_list_amounts_total;
     let amount_winner = prize_amount.multiply_ratio(
         Uint128::new(1),
         Uint128::new(lotto.number_of_winners as u128),
@@ -343,14 +425,6 @@ pub fn execute_receive(
     let denom = lotto.ticket_price.clone().denom;
 
     let mut msgs = vec![
-        // Community Pool
-        BankMsg::Send {
-            to_address: config.community_pool.clone().into_string(),
-            amount: vec![Coin {
-                amount: amount_community_pool,
-                denom: denom.clone(),
-            }],
-        },
         // creator
         BankMsg::Send {
             to_address: lotto.creator.clone().into_string(),
@@ -360,6 +434,18 @@ pub fn execute_receive(
             }],
         },
     ];
+    for allowlisted_recipient in recipients_list_amounts {
+        msgs.push(
+            // allowlisted recipient
+            BankMsg::Send {
+                to_address: allowlisted_recipient.0.into_string(),
+                amount: vec![Coin {
+                    amount: allowlisted_recipient.1,
+                    denom: denom.clone(),
+                }],
+            },
+        );
+    }
     for winner in winners.clone() {
         msgs.push(
             // Winner
@@ -383,7 +469,7 @@ pub fn execute_receive(
         winners: Some(winners.clone()),
         creator: lotto.creator,
         number_of_winners: lotto.number_of_winners,
-        community_pool_percentage: lotto.community_pool_percentage,
+        recipients_list: lotto.recipients_list,
     };
 
     // Increment protocol amount
@@ -537,7 +623,11 @@ fn query_lotto(deps: Deps, env: Env, nonce: u64) -> StdResult<LottoResponse> {
         expiration: lotto.expiration,
         creator: lotto.creator.to_string(),
         number_of_winners: lotto.number_of_winners,
-        community_pool_percentage: lotto.community_pool_percentage,
+        recipients_list: lotto
+            .recipients_list
+            .into_iter()
+            .map(|r| (r.0.to_string(), r.1))
+            .collect(),
     })
 }
 
@@ -591,7 +681,11 @@ fn query_lottos(
                     nonce,
                     creator: lotto.creator.to_string(),
                     number_of_winners: lotto.number_of_winners,
-                    community_pool_percentage: lotto.community_pool_percentage,
+                    recipients_list: lotto
+                        .recipients_list
+                        .into_iter()
+                        .map(|r| (r.0.to_string(), r.1))
+                        .collect(),
                     is_expired: env.block.time > lotto.expiration,
                 }
             })
@@ -631,14 +725,15 @@ mod tests {
     const CREATOR: &str = "creator1";
     const PROXY_ADDRESS: &str = "the proxy of choice";
     const MANAGER: &str = "manager";
-    const COM_POOL: &str = "community_pool";
 
     fn instantiate_contract() -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
         let mut deps = mock_dependencies();
+        let allowlisted_recipients =
+            vec!["community_pool".to_string(), "public_funding_1".to_string()];
         let msg = InstantiateMsg {
             manager: MANAGER.to_string(),
             nois_proxy: PROXY_ADDRESS.to_string(),
-            community_pool: COM_POOL.to_string(),
+            recipients_list: allowlisted_recipients,
             protocol_commission_percent: 5,
             creator_commission_percent: 15,
         };
@@ -673,7 +768,7 @@ mod tests {
             },
             duration_seconds: 90,
             number_of_winners: 2,
-            community_pool_percentage: 20,
+            recipients_list: vec![("community_pool".to_string(), 20)],
         };
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         // lotto-1
@@ -685,7 +780,7 @@ mod tests {
             },
             duration_seconds: 90,
             number_of_winners: 2,
-            community_pool_percentage: 20,
+            recipients_list: vec![("community_pool".to_string(), 20)],
         };
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         // lotto-2
@@ -697,7 +792,7 @@ mod tests {
             },
             duration_seconds: 90,
             number_of_winners: 2,
-            community_pool_percentage: 20,
+            recipients_list: vec![("community_pool".to_string(), 20)],
         };
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
@@ -710,7 +805,7 @@ mod tests {
             },
             duration_seconds: 90,
             number_of_winners: 2,
-            community_pool_percentage: 20,
+            recipients_list: vec![("community_pool".to_string(), 20)],
         };
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         // lotto-4
@@ -722,7 +817,7 @@ mod tests {
             },
             duration_seconds: 90,
             number_of_winners: 2,
-            community_pool_percentage: 20,
+            recipients_list: vec![("community_pool".to_string(), 20)],
         };
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
@@ -817,6 +912,42 @@ mod tests {
         let mut deps = instantiate_contract();
         let env = mock_env();
 
+        // creator creates a lotto instance with a non allowlisted recipient
+        let info = mock_info(CREATOR, &[]);
+        let msg = ExecuteMsg::CreateLotto {
+            ticket_price: Coin {
+                denom: "untrn".to_string(),
+                amount: Uint128::new(100_000_000),
+            },
+            duration_seconds: 90,
+            number_of_winners: 2,
+            recipients_list: vec![(CREATOR.to_string(), 20)],
+        };
+        let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::AddressNotAllowListed {
+                addr: CREATOR.to_string()
+            }
+        );
+
+        // creator creates a lotto instance with more than 100% total recipients
+        let info = mock_info(CREATOR, &[]);
+        let msg = ExecuteMsg::CreateLotto {
+            ticket_price: Coin {
+                denom: "untrn".to_string(),
+                amount: Uint128::new(100_000_000),
+            },
+            duration_seconds: 90,
+            number_of_winners: 2,
+            recipients_list: vec![
+                ("community_pool".to_string(), 20),
+                ("public_funding_1".to_string(), 90),
+            ],
+        };
+        let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::IncorrectRates);
+
         // creator creates a lotto instance
         let info = mock_info(CREATOR, &[]);
         let msg = ExecuteMsg::CreateLotto {
@@ -826,7 +957,7 @@ mod tests {
             },
             duration_seconds: 90,
             number_of_winners: 2,
-            community_pool_percentage: 20,
+            recipients_list: vec![("community_pool".to_string(), 20)],
         };
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
@@ -836,7 +967,7 @@ mod tests {
             nois_proxy: None,
             manager: None,
             lotto_nonce: None,
-            community_pool: None,
+            recipients_list: None,
             protocol_commission_percent: None,
             creator_commission_percent: None,
             is_paused: Some(true),
@@ -852,7 +983,7 @@ mod tests {
             },
             duration_seconds: 90,
             number_of_winners: 2,
-            community_pool_percentage: 20,
+            recipients_list: vec![("community_pool".to_string(), 20)],
         };
         let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
         assert_eq!(err, ContractError::ContractIsPaused);
@@ -920,17 +1051,10 @@ mod tests {
             vec![
                 Attribute::new("action", "receive-randomness-and-send-prize"),
                 Attribute::new("job_id", "lotto-0"),
-                Attribute::new("winner_send_amount", "150000000untrn"),
+                Attribute::new("winner_send_amount", "160000000untrn"),
             ]
         );
         let expected = vec![
-            SubMsg::new(BankMsg::Send {
-                to_address: "community_pool".to_string(),
-                amount: vec![Coin {
-                    amount: Uint128::new(100_000000),
-                    denom: "untrn".to_string(),
-                }],
-            }),
             SubMsg::new(BankMsg::Send {
                 to_address: "creator1".to_string(),
                 amount: vec![Coin {
@@ -939,16 +1063,23 @@ mod tests {
                 }],
             }),
             SubMsg::new(BankMsg::Send {
+                to_address: "community_pool".to_string(),
+                amount: vec![Coin {
+                    amount: Uint128::new(80_000000),
+                    denom: "untrn".to_string(),
+                }],
+            }),
+            SubMsg::new(BankMsg::Send {
                 to_address: "participant-4".to_string(),
                 amount: vec![Coin {
-                    amount: Uint128::new(150_000000),
+                    amount: Uint128::new(160_000000),
                     denom: "untrn".to_string(),
                 }],
             }),
             SubMsg::new(BankMsg::Send {
                 to_address: "participant-5".to_string(),
                 amount: vec![Coin {
-                    amount: Uint128::new(150_000000),
+                    amount: Uint128::new(160_000000),
                     denom: "untrn".to_string(),
                 }],
             }),
@@ -1007,5 +1138,7 @@ mod tests {
             }],
         })];
         assert_eq!(res.messages, expected);
+
+        // TODO test  with multiple allowlisted recipients
     }
 }

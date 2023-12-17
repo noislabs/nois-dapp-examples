@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "double-dice-roll"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -435,7 +435,7 @@ checksum = "f92be4933c13fd498862a9e02a3055f8a8d9c039ce33db97306fd5a6caa7f29b"
 
 [[package]]
 name = "lotto"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "anybuf",
  "cosmwasm-schema",
@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "randdrop"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -555,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "randdrop-global"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",

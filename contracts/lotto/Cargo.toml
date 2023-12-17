@@ -1,6 +1,6 @@
 [package]
 name = "lotto"
-version = "0.1.0"
+version = "0.6.0"
 authors = ["lg <lauren@informal.systems>", "katarina nois"]
 edition = "2021"
 publish = false

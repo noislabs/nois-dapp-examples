@@ -29,12 +29,12 @@ library = []
 
 
 [dependencies]
-nois = "0.8.0"
-anybuf = "0.3.0"
 cosmwasm-std = "1.4.0"
 cosmwasm-schema = "1.4.0"
 cw-storage-plus = "1.1.0"
-cw2 = "1.0.1"
+nois = "0.8.0"
+cw2 = "1.1.1"
+anybuf = "0.3.0"
 schemars = "0.8.10"
 serde = { version = "1.0.145", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.31" }

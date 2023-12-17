@@ -5,8 +5,8 @@ use crate::msg::{
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure_eq, to_binary, Addr, Attribute, BankMsg, Coin, Deps, DepsMut, Env, MessageInfo, Order,
-    QueryResponse, Response, StdResult, Uint128, WasmMsg,
+    ensure_eq, to_json_binary, Addr, Attribute, BankMsg, Coin, Deps, DepsMut, Env, MessageInfo,
+    Order, QueryResponse, Response, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::Bound;
 use nois::{NoisCallback, ProxyExecuteMsg};
@@ -190,7 +190,7 @@ fn execute_create_lotto(
         contract_addr: config.clone().nois_proxy.into_string(),
         // GetRandomnessAfter requests the randomness from the proxy after a specific timestamp
         // The job id is needed to know what randomness we are referring to upon reception in the callback.
-        msg: to_binary(&ProxyExecuteMsg::GetRandomnessAfter {
+        msg: to_json_binary(&ProxyExecuteMsg::GetRandomnessAfter {
             after: expiration,
             job_id: "lotto-".to_string() + nonce.to_string().as_str(),
         })?,
@@ -568,14 +568,14 @@ fn execute_withdraw_all(
 #[entry_point]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     let response = match msg {
-        QueryMsg::Lotto { lotto_nonce } => to_binary(&query_lotto(deps, env, lotto_nonce)?)?,
-        QueryMsg::ProtocolBalances {} => to_binary(&query_protocol_balances(deps)?)?,
+        QueryMsg::Lotto { lotto_nonce } => to_json_binary(&query_lotto(deps, env, lotto_nonce)?)?,
+        QueryMsg::ProtocolBalances {} => to_json_binary(&query_protocol_balances(deps)?)?,
         QueryMsg::LottosDesc {
             creator,
             is_active,
             start_after,
             limit,
-        } => to_binary(&query_lottos(
+        } => to_json_binary(&query_lottos(
             deps,
             env,
             creator,
@@ -589,7 +589,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
             is_active,
             start_after,
             limit,
-        } => to_binary(&query_lottos(
+        } => to_json_binary(&query_lottos(
             deps,
             env,
             creator,
@@ -598,7 +598,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
             limit,
             Order::Ascending,
         )?)?,
-        QueryMsg::Config {} => to_binary(&query_config(deps)?)?,
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?)?,
     };
     Ok(response)
 }
@@ -720,7 +720,7 @@ mod tests {
     use cosmwasm_std::testing::{
         mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
-    use cosmwasm_std::{from_binary, Empty, HexBinary, OwnedDeps, SubMsg, Timestamp};
+    use cosmwasm_std::{from_json, Empty, HexBinary, OwnedDeps, SubMsg, Timestamp};
 
     const CREATOR: &str = "creator1";
     const PROXY_ADDRESS: &str = "the proxy of choice";
@@ -750,7 +750,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_binary(&res).unwrap();
+        let config: ConfigResponse = from_json(res).unwrap();
         assert_eq!(MANAGER, config.manager.as_str());
     }
 
@@ -822,8 +822,8 @@ mod tests {
         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
         // Query CREATOR ASC
-        let LottosResponse { lottos } = from_binary(
-            &query(
+        let LottosResponse { lottos } = from_json(
+            query(
                 deps.as_ref(),
                 mock_env(),
                 QueryMsg::LottosAsc {
@@ -839,8 +839,8 @@ mod tests {
         let response_lotto_nonces = lottos.iter().map(|b| b.nonce).collect::<Vec<u64>>();
         assert_eq!(response_lotto_nonces, [0, 1, 2]);
         // Query creator-2 desc
-        let LottosResponse { lottos } = from_binary(
-            &query(
+        let LottosResponse { lottos } = from_json(
+            query(
                 deps.as_ref(),
                 mock_env(),
                 QueryMsg::LottosDesc {
@@ -856,8 +856,8 @@ mod tests {
         let response_lotto_nonces = lottos.iter().map(|b| b.nonce).collect::<Vec<u64>>();
         assert_eq!(response_lotto_nonces, [4, 3]);
         // Query all creators desc
-        let LottosResponse { lottos } = from_binary(
-            &query(
+        let LottosResponse { lottos } = from_json(
+            query(
                 deps.as_ref(),
                 mock_env(),
                 QueryMsg::LottosDesc {
@@ -873,8 +873,8 @@ mod tests {
         let response_lotto_nonces = lottos.iter().map(|b| b.nonce).collect::<Vec<u64>>();
         assert_eq!(response_lotto_nonces, [4, 3, 2, 1, 0]);
         // Query all creators desc with limit 2
-        let LottosResponse { lottos } = from_binary(
-            &query(
+        let LottosResponse { lottos } = from_json(
+            query(
                 deps.as_ref(),
                 mock_env(),
                 QueryMsg::LottosDesc {
@@ -890,8 +890,8 @@ mod tests {
         let response_lotto_nonces = lottos.iter().map(|b| b.nonce).collect::<Vec<u64>>();
         assert_eq!(response_lotto_nonces, [4, 3]);
         // Query all inactive lottos
-        let LottosResponse { lottos } = from_binary(
-            &query(
+        let LottosResponse { lottos } = from_json(
+            query(
                 deps.as_ref(),
                 mock_env(),
                 QueryMsg::LottosDesc {
@@ -1088,7 +1088,7 @@ mod tests {
 
         // Query protocol balances
         let ProtocolBalancesResponse { balances } =
-            from_binary(&query(deps.as_ref(), mock_env(), QueryMsg::ProtocolBalances {}).unwrap())
+            from_json(query(deps.as_ref(), mock_env(), QueryMsg::ProtocolBalances {}).unwrap())
                 .unwrap();
         //let response_balances: Vec<Coin> = balances.iter().map(|b| b).collect();
         assert_eq!(balances, vec![Coin::new(25000000, "untrn".to_string())]);

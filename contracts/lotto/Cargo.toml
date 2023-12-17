@@ -3,30 +3,18 @@ name = "lotto"
 version = "0.1.0"
 authors = ["lg <lauren@informal.systems>", "katarina nois"]
 edition = "2021"
+publish = false
+license = "Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[profile.release]
-opt-level = 3
-debug = false
-rpath = false
-lto = true
-debug-assertions = false
-codegen-units = 1
-panic = 'abort'
-incremental = false
-overflow-checks = true
-
 [features]
 # for quicker tests, cargo test --lib
 # for more explicit tests, cargo test --features=backtraces
 backtraces = ["cosmwasm-std/backtraces"]
-# use library feature to disable all instantiate/execute/query exports
-library = []
-
 
 [dependencies]
 cosmwasm-std = "1.4.0"
@@ -36,8 +24,7 @@ nois = "0.8.0"
 cw2 = "1.1.1"
 anybuf = "0.3.0"
 schemars = "0.8.10"
-serde = { version = "1.0.145", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.31" }
 
 [dev-dependencies]
-cw-multi-test = "0.20.0"
+serde = { version = "1.0.103", default-features = false, features = ["derive"] }

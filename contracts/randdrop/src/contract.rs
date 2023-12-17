@@ -1,7 +1,7 @@
 use cosmwasm_std::{
-    ensure, ensure_eq, entry_point, to_binary, Addr, Attribute, BankMsg, Coin, CosmosMsg, Deps,
-    DepsMut, Env, HexBinary, MessageInfo, Order, QueryResponse, Response, StdResult, Uint128,
-    WasmMsg,
+    ensure, ensure_eq, entry_point, to_json_binary, Addr, Attribute, BankMsg, Coin, CosmosMsg,
+    Deps, DepsMut, Empty, Env, HexBinary, MessageInfo, Order, QueryResponse, Response, StdResult,
+    Uint128, WasmMsg,
 };
 use nois::{NoisCallback, ProxyExecuteMsg};
 use sha2::{Digest, Sha256};
@@ -12,6 +12,7 @@ use crate::msg::{
     ParticipantResponse, QueryMsg, ResultsResponse,
 };
 use crate::state::{Config, NoisProxy, ParticipantData, CONFIG, PARTICIPANTS};
+use cw2::set_contract_version;
 
 /// The winning chance is 1/AIRDROP_ODDS
 const AIRDROP_ODDS: u64 = 3;
@@ -54,6 +55,22 @@ pub fn instantiate(
     };
     CONFIG.save(deps.storage, &config)?;
 
+    set_contract_version(
+        deps.storage,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
+
+    Ok(Response::default())
+}
+
+#[cfg_attr(not(feature = "library"), ::cosmwasm_std::entry_point)]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+    set_contract_version(
+        deps.storage,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
     Ok(Response::default())
 }
 
@@ -99,10 +116,10 @@ pub fn execute(
 #[entry_point]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     let response = match msg {
-        QueryMsg::IsWinner { address } => to_binary(&query_is_winner(deps, address)?)?,
-        QueryMsg::Config {} => to_binary(&query_config(deps)?)?,
-        QueryMsg::RanddropResults {} => to_binary(&query_results(deps)?)?,
-        QueryMsg::Participant { address } => to_binary(&query_participant(deps, address)?)?,
+        QueryMsg::IsWinner { address } => to_json_binary(&query_is_winner(deps, address)?)?,
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?)?,
+        QueryMsg::RanddropResults {} => to_json_binary(&query_results(deps)?)?,
+        QueryMsg::Participant { address } => to_json_binary(&query_participant(deps, address)?)?,
     };
     Ok(response)
 }
@@ -207,7 +224,7 @@ pub fn execute_participate(
         contract_addr: config.nois_proxy.address.into_string(),
         // GetNextRandomness requests the randomness from the proxy
         // The job id is needed to know what randomness we are referring to upon reception in the callback.
-        msg: to_binary(&ProxyExecuteMsg::GetNextRandomness {
+        msg: to_json_binary(&ProxyExecuteMsg::GetNextRandomness {
             job_id: "randdrop-".to_string() + info.sender.as_str(),
         })?,
 
@@ -468,9 +485,7 @@ mod tests {
     use cosmwasm_std::testing::{
         mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
-    use cosmwasm_std::{
-        from_binary, from_slice, Empty, HexBinary, OwnedDeps, StdError, SubMsg, Timestamp,
-    };
+    use cosmwasm_std::{from_json, Empty, HexBinary, OwnedDeps, StdError, SubMsg, Timestamp};
     use serde::Deserialize;
 
     const CREATOR: &str = "creator";
@@ -507,7 +522,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_binary(&res).unwrap();
+        let config: ConfigResponse = from_json(&res).unwrap();
         assert_eq!(MANAGER, config.manager.as_str());
     }
     #[test]
@@ -578,7 +593,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_binary(&res).unwrap();
+        let config: ConfigResponse = from_json(&res).unwrap();
         assert_eq!("manager2", config.manager.as_str());
 
         // Unauthorized err
@@ -616,7 +631,7 @@ mod tests {
 
     #[test]
     fn reset_not_allowed_when_not_set() {
-        let test_data_winner: Encoded = from_slice(TEST_DATA_WINNER).unwrap();
+        let test_data_winner: Encoded = from_json(TEST_DATA_WINNER).unwrap();
         let mut deps = instantiate_contract(test_data_winner.root);
         let info = mock_info("Someone", &[]);
         let msg = ExecuteMsg::Reset {};
@@ -626,8 +641,8 @@ mod tests {
 
     #[test]
     fn participate_in_randdrop_and_claim_process_works() {
-        let test_data_winner: Encoded = from_slice(TEST_DATA_WINNER).unwrap();
-        let test_data_loser: Encoded = from_slice(TEST_DATA_LOSER).unwrap();
+        let test_data_winner: Encoded = from_json(TEST_DATA_WINNER).unwrap();
+        let test_data_loser: Encoded = from_json(TEST_DATA_LOSER).unwrap();
         let mut deps = instantiate_contract(test_data_winner.root);
 
         let env = mock_env();
@@ -700,7 +715,7 @@ mod tests {
 
         // Once the randomness came in, is_winner is set to Some
         assert_eq!(
-            from_binary::<IsWinnerResponse>(
+            from_json::<IsWinnerResponse>(
                 &query(
                     deps.as_ref(),
                     env.clone(),
@@ -747,7 +762,7 @@ mod tests {
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
         // Check  loser (didnt lose yet) data before receiving the randomness.
         assert_eq!(
-            from_binary::<ParticipantResponse>(
+            from_json::<ParticipantResponse>(
                 &query(
                     deps.as_ref(),
                     env,
@@ -809,7 +824,7 @@ mod tests {
 
         // Once the randomness came in, is_winner is set to Some
         assert_eq!(
-            from_binary::<IsWinnerResponse>(
+            from_json::<IsWinnerResponse>(
                 &query(
                     deps.as_ref(),
                     mock_env(),
@@ -851,7 +866,7 @@ mod tests {
         assert_eq!(res.messages, vec![expected]);
 
         assert_eq!(
-            from_binary::<ResultsResponse>(
+            from_json::<ResultsResponse>(
                 &query(deps.as_ref(), env.clone(), QueryMsg::RanddropResults {}).unwrap()
             )
             .unwrap(),
@@ -871,7 +886,7 @@ mod tests {
 
         // Check winner data
         assert_eq!(
-            from_binary::<ParticipantResponse>(
+            from_json::<ParticipantResponse>(
                 &query(
                     deps.as_ref(),
                     env.clone(),
@@ -901,7 +916,7 @@ mod tests {
         );
         // Check loser data
         assert_eq!(
-            from_binary::<ParticipantResponse>(
+            from_json::<ParticipantResponse>(
                 &query(
                     deps.as_ref(),
                     env.clone(),
@@ -931,7 +946,7 @@ mod tests {
         );
         // Check not participant data
         assert_eq!(
-            from_binary::<ParticipantResponse>(
+            from_json::<ParticipantResponse>(
                 &query(
                     deps.as_ref(),
                     env.clone(),

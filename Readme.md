@@ -4,11 +4,11 @@ This repo presents a collection of contracts that represent usecase using Nois r
 
 ## Contracts
 
-- double dice roll
+- double dice roll:
   This is the standard double dice roll
-- lotto
+- lotto:
   This is a contract that allows lottery platform creation, where lottery creators permissionless actors in the contract.
-- randdrop
+- randdrop:
   This is the official randdrop contract that Nois uses
-- randdrop general
+- randdrop general:
   This is thea variant of the randdrop contract that Nois uses

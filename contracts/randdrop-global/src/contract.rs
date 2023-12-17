@@ -446,7 +446,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_json(&res).unwrap();
+        let config: ConfigResponse = from_json(res).unwrap();
         assert_eq!(MANAGER, config.manager.as_str());
     }
     #[test]
@@ -492,7 +492,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_json(&res).unwrap();
+        let config: ConfigResponse = from_json(res).unwrap();
         assert_eq!("manager2", config.manager.as_str());
 
         // Unauthorized err
@@ -540,7 +540,7 @@ mod tests {
         );
 
         let res = query(deps.as_ref(), env, QueryMsg::MerkleRoot {}).unwrap();
-        let merkle_root: MerkleRootResponse = from_json(&res).unwrap();
+        let merkle_root: MerkleRootResponse = from_json(res).unwrap();
         assert_eq!(
             HexBinary::from_hex("634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37")
                 .unwrap(),

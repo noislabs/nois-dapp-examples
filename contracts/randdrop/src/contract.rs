@@ -522,7 +522,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_json(&res).unwrap();
+        let config: ConfigResponse = from_json(res).unwrap();
         assert_eq!(MANAGER, config.manager.as_str());
     }
     #[test]
@@ -593,7 +593,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_json(&res).unwrap();
+        let config: ConfigResponse = from_json(res).unwrap();
         assert_eq!("manager2", config.manager.as_str());
 
         // Unauthorized err

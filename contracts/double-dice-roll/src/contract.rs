@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{ensure_eq, entry_point, Order};
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, WasmMsg,
+    to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult, WasmMsg,
 };
 use cw2::set_contract_version;
 
@@ -29,9 +29,25 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     NOIS_PROXY.save(deps.storage, &nois_proxy_addr)?;
 
+    set_contract_version(
+        deps.storage,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
+
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("owner", info.sender))
+}
+
+#[cfg_attr(not(feature = "library"), ::cosmwasm_std::entry_point)]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+    set_contract_version(
+        deps.storage,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
+    Ok(Response::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -73,7 +89,7 @@ pub fn execute_roll_dice(
         //GetNextRandomness requests the randomness from the proxy
         //The job id is needed to know what randomness we are referring to upon reception in the callback
         //In this example, the job_id represents one round of dice rolling.
-        msg: to_binary(&ProxyExecuteMsg::GetNextRandomness { job_id })?,
+        msg: to_json_binary(&ProxyExecuteMsg::GetNextRandomness { job_id })?,
         // We pay here the contract with the native chain coin.
         // We need to check first with the nois proxy the denoms and amounts that are required
         funds: info.funds, // Just pass on all funds we got
@@ -131,8 +147,8 @@ pub fn execute_receive(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetHistoryOfRounds {} => to_binary(&query_history(deps)?),
-        QueryMsg::QueryOutcome { job_id } => to_binary(&query_outcome(deps, job_id)?),
+        QueryMsg::GetHistoryOfRounds {} => to_json_binary(&query_history(deps)?),
+        QueryMsg::QueryOutcome { job_id } => to_json_binary(&query_outcome(deps, job_id)?),
     }
 }
 

@@ -1,6 +1,7 @@
 use cosmwasm_std::{
-    ensure, ensure_eq, entry_point, to_binary, Addr, Attribute, BankMsg, Coin, Deps, DepsMut, Env,
-    HexBinary, MessageInfo, QueryResponse, Response, StdResult, Timestamp, Uint128, WasmMsg,
+    ensure, ensure_eq, entry_point, to_json_binary, Addr, Attribute, BankMsg, Coin, Deps, DepsMut,
+    Empty, Env, HexBinary, MessageInfo, QueryResponse, Response, StdResult, Timestamp, Uint128,
+    WasmMsg,
 };
 use nois::{NoisCallback, ProxyExecuteMsg};
 use sha2::{Digest, Sha256};
@@ -13,6 +14,7 @@ use crate::msg::{
 use crate::state::{
     Config, RandomnessParams, CLAIMED, CLAIMED_VALUE, CONFIG, MERKLE_ROOT, NOIS_RANDOMNESS,
 };
+use cw2::set_contract_version;
 
 /// The winning chance is 1/AIRDROP_ODDS
 const AIRDROP_ODDS: u64 = 3;
@@ -48,7 +50,21 @@ pub fn instantiate(
         nois_proxy,
     };
     CONFIG.save(deps.storage, &config)?;
+    set_contract_version(
+        deps.storage,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
+    Ok(Response::default())
+}
 
+#[cfg_attr(not(feature = "library"), ::cosmwasm_std::entry_point)]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+    set_contract_version(
+        deps.storage,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
     Ok(Response::default())
 }
 
@@ -82,10 +98,10 @@ pub fn execute(
 #[entry_point]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     let response = match msg {
-        QueryMsg::IsLucky { address } => to_binary(&query_is_lucky(deps, address)?)?,
-        QueryMsg::Config {} => to_binary(&query_config(deps)?)?,
-        QueryMsg::MerkleRoot {} => to_binary(&query_merkle_root(deps)?)?,
-        QueryMsg::IsClaimed { address } => to_binary(&query_is_claimed(deps, address)?)?,
+        QueryMsg::IsLucky { address } => to_json_binary(&query_is_lucky(deps, address)?)?,
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?)?,
+        QueryMsg::MerkleRoot {} => to_json_binary(&query_merkle_root(deps)?)?,
+        QueryMsg::IsClaimed { address } => to_json_binary(&query_is_claimed(deps, address)?)?,
     };
     Ok(response)
 }
@@ -180,7 +196,7 @@ pub fn execute_randdrop(
         // GetRandomnessAfter requests the randomness from the proxy after a specific timestamp
         // The job id is needed to know what randomness we are referring to upon reception in the callback.
         // In this example we only need 1 random number so this can be hardcoded to "airdrop"
-        msg: to_binary(&ProxyExecuteMsg::GetRandomnessAfter {
+        msg: to_json_binary(&ProxyExecuteMsg::GetRandomnessAfter {
             after: random_beacon_after,
             job_id: "airdrop".to_string(),
         })?,
@@ -403,7 +419,7 @@ mod tests {
     use cosmwasm_std::testing::{
         mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
-    use cosmwasm_std::{from_binary, from_slice, Empty, HexBinary, OwnedDeps, SubMsg};
+    use cosmwasm_std::{from_json, Empty, HexBinary, OwnedDeps, SubMsg};
     use serde::Deserialize;
 
     const CREATOR: &str = "creator";
@@ -430,7 +446,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_binary(&res).unwrap();
+        let config: ConfigResponse = from_json(res).unwrap();
         assert_eq!(MANAGER, config.manager.as_str());
     }
     #[test]
@@ -476,7 +492,7 @@ mod tests {
 
         // it worked, let's query the state
         let res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-        let config: ConfigResponse = from_binary(&res).unwrap();
+        let config: ConfigResponse = from_json(res).unwrap();
         assert_eq!("manager2", config.manager.as_str());
 
         // Unauthorized err
@@ -524,7 +540,7 @@ mod tests {
         );
 
         let res = query(deps.as_ref(), env, QueryMsg::MerkleRoot {}).unwrap();
-        let merkle_root: MerkleRootResponse = from_binary(&res).unwrap();
+        let merkle_root: MerkleRootResponse = from_json(res).unwrap();
         assert_eq!(
             HexBinary::from_hex("634de21cde1044f41d90373733b0f0fb1c1c71f9652b905cdf159e73c4cf0d37")
                 .unwrap(),
@@ -648,7 +664,7 @@ mod tests {
     fn claim() {
         // Run test 1
         let mut deps = instantiate_contract();
-        let test_data: Encoded = from_slice(TEST_DATA).unwrap();
+        let test_data: Encoded = from_json(TEST_DATA).unwrap();
 
         let env = mock_env();
         let info = mock_info(MANAGER, &[]);
@@ -709,7 +725,7 @@ mod tests {
         );
 
         assert!(
-            from_binary::<IsClaimedResponse>(
+            from_json::<IsClaimedResponse>(
                 &query(
                     deps.as_ref(),
                     env.clone(),
@@ -756,10 +772,10 @@ mod tests {
     #[test]
     fn randomness_elgibility_distribution_is_correct() {
         let mut deps = instantiate_contract();
-        let test_data_json: Encoded = from_slice(TEST_DATA).unwrap();
+        let test_data_json: Encoded = from_json(TEST_DATA).unwrap();
         let merkle_root = test_data_json.root;
 
-        let test_data: AirdropList = from_slice(TEST_DATA_LIST).unwrap();
+        let test_data: AirdropList = from_json(TEST_DATA_LIST).unwrap();
 
         let env = mock_env();
         let info = mock_info(MANAGER, &[]);
@@ -782,7 +798,7 @@ mod tests {
 
         let mut num_lucky = 0;
         for addr in &test_data.airdrop_list {
-            let response: IsLuckyResponse = from_binary(
+            let response: IsLuckyResponse = from_json(
                 &query(
                     deps.as_ref(),
                     mock_env(),

@@ -5,22 +5,15 @@ use crate::msg::{
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure_eq, to_json_binary, Addr, Attribute, BankMsg, Coin, Deps, DepsMut, Env, MessageInfo,
-    Order, QueryResponse, Response, StdResult, Uint128, WasmMsg,
+    ensure_eq, to_json_binary, Addr, Attribute, BankMsg, Coin, Deps, DepsMut, Empty, Env,
+    MessageInfo, Order, QueryResponse, Response, StdResult, Uint128, WasmMsg,
 };
+use cw2::set_contract_version;
 use cw_storage_plus::Bound;
 use nois::{NoisCallback, ProxyExecuteMsg};
 
-// use cw2::set_contract_version;
-
 use crate::error::ContractError;
 use crate::state::{Config, Lotto, CONFIG, LOTTOS, PROTOCOL_BALANCES};
-
-/*
-// version info for migration info
-const CONTRACT_NAME: &str = "crates.io:lotto";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-*/
 
 const MAX_LOTTO_DURATION: u64 = 2_592_000; // 30 days
 
@@ -69,9 +62,25 @@ pub fn instantiate(
 
     CONFIG.save(deps.storage, &cnfg)?;
 
+    set_contract_version(
+        deps.storage,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
+
     Ok(Response::new()
         .add_attribute("action", "instantiate")
         .add_attribute("manager", info.sender))
+}
+
+#[cfg_attr(not(feature = "library"), ::cosmwasm_std::entry_point)]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+    set_contract_version(
+        deps.storage,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
+    Ok(Response::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

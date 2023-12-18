@@ -16,6 +16,7 @@ use crate::error::ContractError;
 use crate::state::{Config, Lotto, CONFIG, LOTTOS, PROTOCOL_BALANCES};
 
 const MAX_LOTTO_DURATION: u64 = 2_592_000; // 30 days
+const RANDOMNESS_SAFETY_MARGIN: u64 = 5; //in seconds
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -200,7 +201,7 @@ fn execute_create_lotto(
         // GetRandomnessAfter requests the randomness from the proxy after a specific timestamp
         // The job id is needed to know what randomness we are referring to upon reception in the callback.
         msg: to_json_binary(&ProxyExecuteMsg::GetRandomnessAfter {
-            after: expiration,
+            after: expiration.plus_seconds(RANDOMNESS_SAFETY_MARGIN),
             job_id: "lotto-".to_string() + nonce.to_string().as_str(),
         })?,
         // We pay here the proxy contract with whatever the depositors sends. The depositor needs to check in advance the proxy prices.

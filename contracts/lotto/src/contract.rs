@@ -350,7 +350,7 @@ fn execute_buy_ticket(
 
     lotto.balance += balance.amount;
     // Add participant address
-    lotto.participants.push(info.clone().sender);
+    lotto.participants.push(info.sender.clone());
 
     // Save the state & updated config escrow balance
     LOTTOS.save(deps.storage, lotto_id, &lotto)?;

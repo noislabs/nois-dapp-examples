@@ -350,15 +350,14 @@ fn execute_buy_ticket(
         return Err(ContractError::LottoDepositStageEnded {});
     }
     // Increment total deposit
-    let balance: Coin = info
+    let amount: Uint128 = info
         .funds
         .iter()
         .filter(|coin| coin.denom == ticket_price.denom)
-        .last()
-        .unwrap()
-        .clone();
+        .map(|coin| coin.amount)
+        .sum();
 
-    lotto.balance += balance.amount;
+    lotto.balance += amount;
     // Add participant address
     lotto.participants.push(info.sender.clone());
 

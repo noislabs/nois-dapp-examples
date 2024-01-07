@@ -10,10 +10,6 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{DOUBLE_DICE_OUTCOME, NOIS_PROXY};
 use nois::{ints_in_range, NoisCallback, ProxyExecuteMsg, MAX_JOB_ID_LEN};
 
-// version info for migration info
-const CONTRACT_NAME: &str = "crates.io:double-dice-roll";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -26,7 +22,6 @@ pub fn instantiate(
         .api
         .addr_validate(&msg.nois_proxy)
         .map_err(|_| ContractError::InvalidProxyAddress)?;
-    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     NOIS_PROXY.save(deps.storage, &nois_proxy_addr)?;
 
     set_contract_version(

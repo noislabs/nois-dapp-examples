@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "double-dice-roll"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -428,6 +428,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f92be4933c13fd498862a9e02a3055f8a8d9c039ce33db97306fd5a6caa7f29b"
 
 [[package]]
+name = "lotto"
+version = "0.6.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw2",
+ "nois",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "nois"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -519,7 +533,7 @@ dependencies = [
 
 [[package]]
 name = "randdrop"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -534,7 +548,7 @@ dependencies = [
 
 [[package]]
 name = "randdrop-global"
-version = "0.1.0"
+version = "0.6.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
